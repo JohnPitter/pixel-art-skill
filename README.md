@@ -13,7 +13,7 @@
 
 <br/>
 
-<img src="assets/mushroom-druid.png" alt="Mushroom Druid — Personagem pixel art animado gerado com Claude Code" width="720" />
+<img src="assets/mushroom-druid.gif" alt="Mushroom Druid — Personagem pixel art animado gerado com Claude Code" width="720" />
 
 <br/>
 
@@ -59,7 +59,7 @@ Uma skill para **Claude Code** que ensina o Claude a gerar personagens e assets 
 Personagem completo com idle, walk e attack. Gerado a partir de um unico prompt.
 
 <div align="center">
-<img src="assets/mushroom-druid.png" alt="Mushroom Druid" width="600" />
+<img src="assets/mushroom-druid.gif" alt="Mushroom Druid" width="600" />
 </div>
 
 > **Prompt usado**: *"Cria um personagem pixel art mushroom druid com animacao de idle, walk e attack"*
@@ -79,7 +79,7 @@ Pack completo com Floor, Knight, Skeleton, Slime, Bat, Rat, Chest e Sword.
 Cavaleiro com armadura blue-steel, capa vermelha, espada com animacao de slash.
 
 <div align="center">
-<img src="assets/knight.png" alt="Medieval Knight" width="600" />
+<img src="assets/knight.gif" alt="Medieval Knight" width="600" />
 </div>
 
 > **Prompt usado**: *"Cria um medieval knight pixel art com animacao de walk e slash"*
@@ -89,7 +89,7 @@ Cavaleiro com armadura blue-steel, capa vermelha, espada com animacao de slash.
 Arena de batalha com AI, HP bars, hit effects, knockback, damage numbers e particulas.
 
 <div align="center">
-<img src="assets/battle.png" alt="Battle Arena" width="600" />
+<img src="assets/battle.gif" alt="Battle Arena" width="600" />
 </div>
 
 > **Prompt usado**: *"Cria uma batalha entre o mushroom druid e o knight"*
