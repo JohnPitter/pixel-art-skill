@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roguelike Starter Pack — Pixel Art</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0e1020;display:flex;flex-direction:column;align-items:center;min-height:100vh;font-family:'Segoe UI',sans-serif;color:#e0e0e0;padding:30px 20px}
+h1{font-size:1.7rem;font-weight:700;margin-bottom:4px;color:#eee}
+.sub{color:#666;font-size:.82rem;margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:880px;width:100%}
+.card{background:linear-gradient(180deg,#181830,#141428);border:1px solid #252545;border-radius:14px;padding:12px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;transition:.25s}
+.card:hover{border-color:#3a3a6a;transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.card canvas{image-rendering:pixelated;image-rendering:crisp-edges;border-radius:8px}
+.card .nm{font-size:.7rem;color:#777;letter-spacing:1.5px}
+</style>
+</head>
+<body>
+<h1>Your Roguelike Starter Pack</h1>
+<p class="sub">8 game-ready assets</p>
+<div class="grid" id="g"></div>
+<script>
+// ══════════════════════════════════════════════════════
+//  ENGINE — Following the Pixel Art Character Skill
+//  Buffer canvas pattern: draw at 1:1, scale to display
+// ══════════════════════════════════════════════════════
+const BUF = 48;       // buffer resolution
+const SCALE = 4;      // render scale
+const CARD = BUF * SCALE; // 192px cards
+
+const NAMES = ['Floor','Knight','Skeleton','Slime','Bat','Rat','Chest','Sword'];
+const grid = document.getElementById('g');
+const sprites = {};
+
+NAMES.forEach(name => {
+  const card = document.createElement('div'); card.className = 'card';
+  const cv = document.createElement('canvas');
+  cv.width = CARD; cv.height = CARD;
+  cv.style.cssText = 'image-rendering:pixelated;image-rendering:crisp-edges;border-radius:8px';
+  const lb = document.createElement('span'); lb.className = 'nm'; lb.textContent = name;
+  card.append(cv, lb); grid.appendChild(card);
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const buf = document.createElement('canvas');
+  buf.width = BUF; buf.height = BUF;
+  const bc = buf.getContext('2d');
+  sprites[name] = { cv, ctx, buf, bc };
+});
+
+// ── Skill: Pixel helpers ──────────────────────────
+function px(bc, x, y, c) { bc.fillStyle = c; bc.fillRect(x, y, 1, 1); }
+function hL(bc, x, y, cs) { for (let i = 0; i < cs.length; i++) if (cs[i]) { bc.fillStyle = cs[i]; bc.fillRect(x+i, y, 1, 1); } }
+
+// ── Skill: Checkerboard BG (transparency) ─────────
+function bg(bc) {
+  for (let y = 0; y < BUF; y++)
+    for (let x = 0; x < BUF; x++) {
+      bc.fillStyle = (x+y)%2 === 0 ? '#191932' : '#1d1d38';
+      bc.fillRect(x, y, 1, 1);
+    }
+}
+
+// ── Skill: Blit buffer to display ─────────────────
+function blit(s) {
+  s.ctx.drawImage(s.buf, 0, 0, CARD, CARD);
+}
+
+// ══════════════════════════════════════════════════════
+//  1. FLOOR — Irregular stonework, hLine row-by-row
+//  Palette: 8 tones of grey-brown, hue-shifted
+// ══════════════════════════════════════════════════════
+const FP = {
+  g: '#111110',  // grout
+  s0:'#2c2c24', s1:'#383830', s2:'#444438', s3:'#50504a',
+  s4:'#5c5c52', s5:'#68685c', s6:'#747466', s7:'#808072',
+  s8:'#8c8c7c', s9:'#989886',
+};
+
+function drawFloor() {
+  const s = sprites.Floor, c = s.bc;
+  const G=FP.g;
+  // Procedural stone tiles with per-stone shading
+  // Each stone: top/left edges = highlight (s7-s9), bottom/right = shadow (s1-s3), fill = s4-s6
+  const stones = [
+    {x:0,y:0,w:11,h:7},{x:11,y:0,w:10,h:6},{x:21,y:0,w:13,h:7},{x:34,y:0,w:14,h:6},
+    {x:0,y:7,w:8,h:6},{x:8,y:6,w:9,h:7},{x:17,y:7,w:11,h:6},{x:28,y:7,w:10,h:7},{x:38,y:6,w:10,h:7},
+    {x:0,y:13,w:12,h:6},{x:12,y:13,w:8,h:7},{x:20,y:13,w:11,h:6},{x:31,y:13,w:9,h:7},{x:40,y:13,w:8,h:6},
+    {x:0,y:19,w:9,h:7},{x:9,y:20,w:11,h:6},{x:20,y:19,w:8,h:7},{x:28,y:19,w:10,h:6},{x:38,y:20,w:10,h:6},
+    {x:0,y:26,w:13,h:6},{x:13,y:26,w:9,h:7},{x:22,y:26,w:12,h:6},{x:34,y:26,w:14,h:7},
+    {x:0,y:32,w:8,h:6},{x:8,y:33,w:10,h:6},{x:18,y:32,w:9,h:7},{x:27,y:32,w:11,h:6},{x:38,y:33,w:10,h:6},
+    {x:0,y:38,w:11,h:6},{x:11,y:39,w:9,h:5},{x:20,y:38,w:12,h:6},{x:32,y:38,w:8,h:6},{x:40,y:39,w:8,h:5},
+    {x:0,y:44,w:14,h:4},{x:14,y:44,w:10,h:4},{x:24,y:44,w:12,h:4},{x:36,y:44,w:12,h:4},
+  ];
+  // Grout fill
+  for(let y=0;y<BUF;y++)for(let x=0;x<BUF;x++) px(c,x,y,G);
+
+  const tones=[FP.s0,FP.s1,FP.s2,FP.s3,FP.s4,FP.s5,FP.s6,FP.s7,FP.s8,FP.s9];
+  for(const st of stones){
+    for(let dy=0;dy<st.h&&st.y+dy<BUF;dy++){
+      for(let dx=0;dx<st.w&&st.x+dx<BUF;dx++){
+        const ex=dx===0||dx===st.w-1, ey=dy===0||dy===st.h-1;
+        if(ex&&ey) continue;
+        let t;
+        if(dy===0) t=7+((dx*3+st.x)%3-1);
+        else if(dx===0) t=6+((dy*5+st.y)%2);
+        else if(dy===st.h-1) t=2+((dx*7)%2);
+        else if(dx===st.w-1) t=3+((dy*3)%2);
+        else { const n=((st.x+dx)*7+(st.y+dy)*13+dx*dy*3)%23; t=n<4?3:n<8?4:n<13?5:n<17?6:n<20?4:5; }
+        t=Math.max(0,Math.min(9,t));
+        px(c,st.x+dx,st.y+dy,tones[t]);
+      }
+    }
+  }
+  blit(s);
+}
+
+// ══════════════════════════════════════════════════════
+//  2. KNIGHT — Modular: helmet, armor, cape, sword
+//  Palette: blue-steel armor (hue-shifted), crimson cape
+// ══════════════════════════════════════════════════════
+const KP = {
+  O:'#08060a',
+  // Armor: shadows→purple, highlights→cyan
+  a0:'#181828',a1:'#202840',a2:'#2c3858',a3:'#384868',a4:'#486080',a5:'#5878a0',a6:'#6898c0',a7:'#80b8d8',a8:'#98d0e8',
+  // Cape: shadows→deep maroon, highlights→orange-red
+  c0:'#200810',c1:'#381018',c2:'#581820',c3:'#802028',c4:'#a83038',c5:'#c84048',c6:'#e05858',c7:'#f07068',
+  // Skin
+  s0:'#785838',s1:'#a08058',s2:'#c0a070',
+  // Gold accents
+  g0:'#504010',g1:'#786020',g2:'#a08030',g3:'#c8a840',g4:'#e8c850',
+  // Sword blade
+  w0:'#404858',w1:'#607090',w2:'#80a0c0',w3:'#a0c8e0',w4:'#c0e0f8',w5:'#e0f0ff',
+  // Plume
+  p0:'#a02828',p1:'#d04040',p2:'#f06060',
+};
+
+function drawKnight(bc, bob) {
+  const P=KP, O=P.O, _=null;
+  const ox=12, oy=4+bob;
+
+  // Plume
+  hL(bc,ox+5,oy,[_,_,P.p0,P.p1,P.p2,P.p1]);
+  hL(bc,ox+4,oy+1,[_,_,O,P.p0,P.p1,P.p2,P.p1,O]);
+  // Helmet
+  hL(bc,ox+3,oy+2,[_,O,P.a3,P.a4,P.a5,P.a6,P.a7,P.a6,P.a5,P.a3,O]);
+  hL(bc,ox+2,oy+3,[O,P.a2,P.a3,P.a5,P.a6,P.a7,P.a8,P.a7,P.a6,P.a4,P.a2,O]);
+  hL(bc,ox+2,oy+4,[O,P.a2,P.a4,P.a5,P.a7,P.a8,P.a8,P.a8,P.a7,P.a5,P.a3,O]);
+  hL(bc,ox+2,oy+5,[O,P.a1,P.a3,P.a5,P.a7,P.a8,P.a8,P.a7,P.a5,P.a3,P.a1,O]);
+  // Visor slit
+  hL(bc,ox+2,oy+6,[O,P.a1,O,O,P.a5,P.a6,P.a7,P.a5,O,O,P.a1,O]);
+  hL(bc,ox+2,oy+7,[O,P.a1,P.a2,P.a3,P.a4,P.a5,P.a6,P.a5,P.a3,P.a2,P.a1,O]);
+  hL(bc,ox+3,oy+8,[O,P.a1,P.a2,P.a3,P.a4,P.a3,P.a2,P.a1,O]);
+
+  // Neck
+  hL(bc,ox+5,oy+9,[_,O,P.s0,P.s1,P.s2,P.s1,O]);
+
+  // Shoulders + cape starts
+  hL(bc,ox+1,oy+10,[O,P.a1,P.a3,P.a5,P.a6,P.a7,P.a8,P.a7,P.a6,P.a5,P.a3,P.a2,O,_,O,P.c1,P.c2,P.c3]);
+  hL(bc,ox,oy+11,[O,P.a1,P.a2,P.a4,P.a5,P.a6,P.a8,P.a8,P.a7,P.a5,P.a4,P.a3,P.a1,O,P.c1,P.c2,P.c3,P.c4]);
+  hL(bc,ox+1,oy+12,[O,P.a1,P.a3,P.a4,P.a6,P.a7,P.a8,P.a7,P.a6,P.a4,P.a3,P.a1,O,P.c1,P.c3,P.c4,P.c5]);
+  // Chest
+  hL(bc,ox+1,oy+13,[O,P.a1,P.a3,P.a5,P.a6,P.a8,P.a8,P.a8,P.a6,P.a5,P.a3,P.a1,O,P.c0,P.c2,P.c4,P.c5]);
+  hL(bc,ox+1,oy+14,[O,P.a1,P.a2,P.a4,P.a5,P.a7,P.a8,P.a7,P.a5,P.a4,P.a2,P.a1,O,P.c0,P.c2,P.c3,P.c5]);
+  hL(bc,ox+1,oy+15,[O,P.a1,P.a2,P.a3,P.a5,P.a6,P.a7,P.a6,P.a5,P.a3,P.a2,P.a1,O,P.c0,P.c1,P.c3,P.c4]);
+  // Belt
+  hL(bc,ox+2,oy+16,[O,P.g0,P.g1,P.g2,P.g3,P.g4,P.g3,P.g2,P.g1,P.g0,O,_,P.c0,P.c1,P.c3,P.c4]);
+  // Legs
+  hL(bc,ox+2,oy+17,[O,P.a1,P.a3,P.a5,P.a6,O,P.a5,P.a6,P.a4,P.a2,O,_,_,P.c0,P.c2,P.c3]);
+  hL(bc,ox+2,oy+18,[O,P.a1,P.a3,P.a5,P.a7,O,P.a6,P.a7,P.a5,P.a2,O,_,_,P.c0,P.c1,P.c3]);
+  hL(bc,ox+2,oy+19,[O,P.a0,P.a2,P.a4,P.a6,O,P.a5,P.a6,P.a4,P.a1,O,_,_,_,P.c0,P.c2]);
+  hL(bc,ox+2,oy+20,[O,P.a0,P.a2,P.a4,P.a5,O,P.a4,P.a5,P.a3,P.a1,O,_,_,_,_,P.c0]);
+  hL(bc,ox+2,oy+21,[O,P.a0,P.a2,P.a3,P.a5,O,P.a4,P.a5,P.a3,P.a0,O]);
+  hL(bc,ox+2,oy+22,[O,P.a0,P.a2,P.a4,P.a5,O,P.a4,P.a5,P.a3,P.a0,O]);
+  // Boots
+  hL(bc,ox+1,oy+23,[O,P.a0,P.a1,P.a3,P.a4,P.a3,O,O,P.a0,P.a1,P.a3,P.a4,O]);
+  hL(bc,ox+1,oy+24,[O,O,O,O,O,O,O,_,O,O,O,O,O]);
+
+  // Sword (left side — behind body)
+  px(bc,ox+1,oy+4,P.w5);px(bc,ox+1,oy+5,P.w4);px(bc,ox+1,oy+6,P.w3);
+  px(bc,ox+1,oy+7,P.w3);px(bc,ox+1,oy+8,P.w2);px(bc,ox+1,oy+9,P.w1);
+  // Guard
+  hL(bc,ox,oy+10,[O,P.g2,P.g3,O]);
+  // Hand
+  px(bc,ox+1,oy+11,P.s0); px(bc,ox+1,oy+12,P.s1);
+}
+
+// ══════════════════════════════════════════════════════
+//  3. SKELETON — Bones + tattered leather
+// ══════════════════════════════════════════════════════
+const SP = {
+  O:'#08060a',
+  b0:'#484030',b1:'#605840',b2:'#787050',b3:'#908860',b4:'#a8a078',b5:'#c0b890',b6:'#d8d0a0',b7:'#e8e0b8',b8:'#f0ead0',
+  l0:'#281810',l1:'#3c2818',l2:'#503820',l3:'#685030',
+  e0:'#c8a030',e1:'#e0c040', // eye glow
+  w0:'#485060',w1:'#6888a8',w2:'#88b0d0',w3:'#a8d8f0',
+};
+
+function drawSkeleton(bc, bob) {
+  const P=SP, O=P.O, _=null;
+  const ox=12, oy=4+bob;
+
+  // Skull
+  hL(bc,ox+3,oy,[_,O,O,O,O,O,O]);
+  hL(bc,ox+2,oy+1,[O,P.b4,P.b5,P.b6,P.b7,P.b6,P.b5,P.b4,O]);
+  hL(bc,ox+1,oy+2,[O,P.b3,P.b5,P.b6,P.b7,P.b8,P.b7,P.b6,P.b4,O]);
+  hL(bc,ox+1,oy+3,[O,P.b3,P.b5,P.b7,P.b8,P.b8,P.b8,P.b7,P.b5,O]);
+  // Eye sockets
+  hL(bc,ox+1,oy+4,[O,P.b2,P.e0,P.e1,P.b6,P.b7,P.e1,P.e0,P.b3,O]);
+  // Nose
+  hL(bc,ox+1,oy+5,[O,P.b2,P.b3,O,O,O,P.b4,P.b3,P.b2,O]);
+  // Jaw
+  hL(bc,ox+2,oy+6,[O,P.b1,O,P.b3,O,P.b3,O,P.b1,O]);
+  hL(bc,ox+3,oy+7,[O,O,P.b1,P.b2,P.b1,O,O]);
+
+  // Spine
+  px(bc,ox+5,oy+8,P.b2); px(bc,ox+6,oy+8,P.b3);
+
+  // Ribcage with leather scraps
+  hL(bc,ox+1,oy+9,[O,P.l1,P.l2,P.b2,P.b3,P.b4,P.b5,P.b3,P.l2,P.l1,O]);
+  hL(bc,ox,oy+10,[O,P.l0,P.l2,P.l3,P.b2,O,P.b4,O,P.b2,P.l2,P.l1,O]);
+  hL(bc,ox,oy+11,[O,P.l0,P.l1,P.b2,P.b3,O,P.b5,O,P.b3,P.b2,P.l1,O]);
+  hL(bc,ox+1,oy+12,[O,P.l0,P.b2,O,P.b4,O,P.b4,O,P.b2,P.l0,O]);
+  hL(bc,ox+1,oy+13,[O,P.b1,P.b2,P.b3,P.b4,P.b5,P.b4,P.b3,P.b2,P.b1,O]);
+  // Pelvis
+  hL(bc,ox+2,oy+14,[O,P.b1,P.b2,P.b3,P.b4,P.b3,P.b2,P.b1,O]);
+  hL(bc,ox+3,oy+15,[O,P.b1,P.b2,O,P.b2,P.b1,O]);
+
+  // Leg bones
+  hL(bc,ox+3,oy+16,[O,P.b2,P.b4,O,_,O,P.b4,P.b2,O]);
+  hL(bc,ox+2,oy+17,[O,P.b3,P.b5,O,_,_,O,P.b5,P.b3,O]);
+  hL(bc,ox+2,oy+18,[O,P.b2,P.b4,O,_,_,O,P.b4,P.b2,O]);
+  hL(bc,ox+2,oy+19,[O,P.b3,P.b5,O,_,_,O,P.b5,P.b3,O]);
+  hL(bc,ox+2,oy+20,[O,P.b2,P.b4,O,_,_,O,P.b4,P.b2,O]);
+  hL(bc,ox+1,oy+21,[O,P.b1,P.b3,P.b5,O,_,_,O,P.b5,P.b3,P.b1,O]);
+  // Feet
+  hL(bc,ox+1,oy+22,[O,P.b2,P.b3,P.b4,O,_,_,O,P.b4,P.b3,P.b2,O]);
+  hL(bc,ox+1,oy+23,[O,O,O,O,O,_,_,_,O,O,O,O,O]);
+
+  // Right arm + sword
+  px(bc,ox+11,oy+10,P.b2);px(bc,ox+12,oy+10,P.b3);
+  px(bc,ox+12,oy+11,P.b4);px(bc,ox+12,oy+9,P.b3);
+  // Sword
+  px(bc,ox+13,oy+3,P.w3);px(bc,ox+13,oy+4,P.w3);px(bc,ox+13,oy+5,P.w2);
+  px(bc,ox+13,oy+6,P.w2);px(bc,ox+13,oy+7,P.w1);px(bc,ox+13,oy+8,P.w1);
+  hL(bc,ox+12,oy+9,[P.l2,P.l3,P.l2]);
+
+  // Left arm
+  px(bc,ox,oy+10,P.b2);px(bc,ox-1,oy+11,P.b3);px(bc,ox-1,oy+12,P.b2);
+}
+
+// ══════════════════════════════════════════════════════
+//  4. SLIME — Massive green blob, detailed red eyes
+//  Palette: 12 greens hue-shifted, 4 eye colors
+// ══════════════════════════════════════════════════════
+const LP = {
+  O:'#040804',
+  g0:'#081408',g1:'#0c1c08',g2:'#142c10',g3:'#1c3c18',g4:'#245020',
+  g5:'#2c6828',g6:'#348830',g7:'#3ca838',g8:'#48c040',g9:'#58d848',
+  gA:'#68e850',gB:'#80f860',gC:'#98ff78',
+  e0:'#601010',e1:'#a01818',e2:'#d02828',e3:'#e84040',e4:'#f05858',
+  ey:'#e8d020',ep:'#180808',
+};
+
+function drawSlime(bc, frame) {
+  const P=LP, O=P.O, _=null;
+  const sq = (frame % 8) >= 4;
+  const ox = 4, oy = sq ? 6 : 5;
+
+  if (!sq) {
+    // Normal — tall dome
+    hL(bc,ox+7,oy,[O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+    hL(bc,ox+4,oy+1,[O,O,P.g8,P.g9,P.gA,P.gB,P.gC,P.gC,P.gB,P.gA,P.g9,P.g8,P.g7,P.g6,P.g5,P.g4,O,O]);
+    hL(bc,ox+2,oy+2,[O,O,P.g6,P.g7,P.g8,P.g9,P.gA,P.gB,P.gC,P.gB,P.gA,P.g9,P.g8,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,O]);
+    hL(bc,ox+1,oy+3,[O,P.g3,P.g5,P.g6,P.g7,P.g8,P.g9,P.gA,P.gB,P.gC,P.gB,P.gA,P.g9,P.g8,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,P.g1,O]);
+    hL(bc,ox,oy+4,[O,P.g2,P.g4,P.g5,P.g6,P.g7,P.g8,P.g9,P.gA,P.gB,P.gA,P.g9,P.g8,P.g8,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,P.g1,P.g1,O]);
+    hL(bc,ox,oy+5,[O,P.g1,P.g3,P.g4,P.g6,P.g7,P.g8,P.g9,P.gA,P.g9,P.g9,P.g8,P.g8,P.g7,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,P.g1,P.g1,O]);
+    // Eyes row
+    hL(bc,ox,oy+6,[O,P.g1,P.g3,P.g4,P.g5,P.e1,P.e2,P.e3,P.ey,P.g8,P.g7,P.g7,P.g6,P.e1,P.e2,P.e3,P.ey,P.g4,P.g3,P.g2,P.g1,P.g1,O]);
+    hL(bc,ox,oy+7,[O,P.g1,P.g2,P.g4,P.g5,P.e0,P.e1,P.e2,P.e3,P.g8,P.g7,P.g6,P.g6,P.e0,P.e1,P.e2,P.e3,P.g4,P.g3,P.g2,P.g1,P.g0,O]);
+    hL(bc,ox,oy+8,[O,P.g1,P.g2,P.g3,P.g4,P.ep,P.e0,P.e1,P.ep,P.g7,P.g6,P.g6,P.g5,P.ep,P.e0,P.e1,P.ep,P.g3,P.g2,P.g2,P.g1,P.g0,O]);
+    // Lower body
+    hL(bc,ox,oy+9,[O,P.g0,P.g2,P.g3,P.g5,P.g6,P.g7,P.g8,P.g7,P.g6,P.g6,P.g5,P.g5,P.g5,P.g6,P.g7,P.g6,P.g3,P.g2,P.g1,P.g1,P.g0,O]);
+    hL(bc,ox,oy+10,[O,P.g0,P.g1,P.g3,P.g4,P.g5,P.g6,P.g7,P.g6,P.g5,P.g5,P.g4,P.g4,P.g4,P.g5,P.g6,P.g5,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+1,oy+11,[O,P.g0,P.g2,P.g3,P.g4,P.g5,P.g6,P.g5,P.g4,P.g4,P.g3,P.g3,P.g4,P.g5,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+1,oy+12,[O,P.g0,P.g1,P.g2,P.g3,P.g4,P.g5,P.g4,P.g3,P.g3,P.g2,P.g2,P.g3,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+2,oy+13,[O,P.g0,P.g1,P.g2,P.g3,P.g4,P.g3,P.g2,P.g2,P.g1,P.g1,P.g2,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    // Base — drips
+    hL(bc,ox+3,oy+14,[O,P.g0,P.g1,P.g2,P.g3,P.g2,P.g1,P.g1,P.g0,P.g1,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+4,oy+15,[O,O,P.g0,P.g1,O,O,O,P.g1,P.g0,O,O,P.g0,O,O]);
+    // Drip tips
+    px(bc,ox+6,oy+16,P.g0);px(bc,ox+6,oy+17,O);
+    px(bc,ox+11,oy+16,P.g1);px(bc,ox+11,oy+17,P.g0);px(bc,ox+11,oy+18,O);
+    px(bc,ox+15,oy+16,P.g0);px(bc,ox+15,oy+17,O);
+  } else {
+    // Squashed — wider, shorter
+    hL(bc,ox+5,oy,[O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+    hL(bc,ox+2,oy+1,[O,O,P.g7,P.g8,P.g9,P.gA,P.gB,P.gC,P.gC,P.gB,P.gA,P.g9,P.g8,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,O,O]);
+    hL(bc,ox,oy+2,[O,O,P.g4,P.g5,P.g6,P.g7,P.g8,P.g9,P.gA,P.gB,P.gA,P.g9,P.g8,P.g7,P.g6,P.g5,P.g4,P.g3,P.g2,P.g1,P.g1,O,O]);
+    hL(bc,ox-1,oy+3,[O,P.g1,P.g3,P.g4,P.g5,P.g6,P.g7,P.g8,P.g9,P.gA,P.g9,P.g9,P.g8,P.g7,P.g6,P.g5,P.g5,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    // Eyes
+    hL(bc,ox-1,oy+4,[O,P.g1,P.g2,P.g4,P.g5,P.e1,P.e2,P.e3,P.ey,P.g8,P.g7,P.g7,P.g6,P.e1,P.e2,P.e3,P.ey,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox-1,oy+5,[O,P.g0,P.g2,P.g3,P.g5,P.e0,P.e1,P.e2,P.e3,P.g7,P.g6,P.g6,P.g5,P.e0,P.e1,P.e2,P.e3,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox-1,oy+6,[O,P.g0,P.g1,P.g3,P.g4,P.ep,P.e0,P.e1,P.ep,P.g6,P.g5,P.g5,P.g4,P.ep,P.e0,P.e1,P.ep,P.g3,P.g2,P.g1,P.g0,P.g0,P.g0,O]);
+    // Lower
+    hL(bc,ox-1,oy+7,[O,P.g0,P.g1,P.g2,P.g4,P.g5,P.g6,P.g7,P.g6,P.g5,P.g5,P.g4,P.g4,P.g4,P.g5,P.g6,P.g5,P.g3,P.g2,P.g1,P.g0,P.g0,P.g0,O]);
+    hL(bc,ox,oy+8,[O,P.g0,P.g1,P.g3,P.g4,P.g5,P.g6,P.g5,P.g4,P.g4,P.g3,P.g3,P.g3,P.g4,P.g5,P.g4,P.g2,P.g1,P.g0,P.g0,P.g0,O]);
+    hL(bc,ox,oy+9,[O,P.g0,P.g1,P.g2,P.g3,P.g4,P.g5,P.g4,P.g3,P.g3,P.g2,P.g2,P.g3,P.g4,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+1,oy+10,[O,P.g0,P.g1,P.g2,P.g3,P.g4,P.g3,P.g2,P.g2,P.g1,P.g1,P.g2,P.g3,P.g2,P.g1,P.g0,P.g0,O]);
+    hL(bc,ox+2,oy+11,[O,O,P.g0,P.g1,P.g2,O,O,P.g1,P.g0,O,O,P.g1,O,O,P.g0,O]);
+    px(bc,ox+4,oy+12,P.g0);px(bc,ox+4,oy+13,O);
+    px(bc,ox+10,oy+12,P.g1);px(bc,ox+10,oy+13,P.g0);px(bc,ox+10,oy+14,O);
+    px(bc,ox+15,oy+12,P.g0);px(bc,ox+15,oy+13,O);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  5. BAT — 4-frame wing flap
+// ══════════════════════════════════════════════════════
+const BP = {
+  O:'#06040a',
+  b0:'#101018',b1:'#1c1828',b2:'#282838',b3:'#383848',b4:'#484858',b5:'#585868',b6:'#687078',
+  e0:'#c83020',e1:'#e8c820',
+};
+
+function drawBat(bc, frame) {
+  const P=BP, O=P.O, _=null;
+  const wf = frame % 4;
+  const ox=17, oy=20;
+
+  // Ears
+  px(bc,ox+1,oy-2,P.b3);px(bc,ox+5,oy-2,P.b3);
+  px(bc,ox+1,oy-1,P.b2);px(bc,ox+5,oy-1,P.b2);
+  // Head
+  hL(bc,ox,oy,[O,P.b3,P.b4,P.b5,P.b6,P.b5,P.b4,O]);
+  hL(bc,ox,oy+1,[O,P.b2,P.e0,P.e1,P.b5,P.e0,P.e1,O]);
+  hL(bc,ox,oy+2,[O,P.b2,P.b3,P.b4,P.b5,P.b4,P.b3,O]);
+  // Body
+  hL(bc,ox+1,oy+3,[O,P.b2,P.b3,P.b4,P.b3,O]);
+  px(bc,ox+2,oy+4,P.b1);px(bc,ox+4,oy+4,P.b1);
+  px(bc,ox+2,oy+5,O);px(bc,ox+4,oy+5,O);
+
+  // Wings based on frame
+  const wingShapes = [
+    // Up
+    [[-7,-3],[-6,-2],[-5,-1],[-4,0],[-3,0],[-2,0]],
+    // Mid-up
+    [[-7,-2],[-6,-1],[-5,0],[-4,0],[-3,0],[-2,0]],
+    // Level
+    [[-7,0],[-6,0],[-5,0],[-4,0],[-3,0],[-2,0]],
+    // Down
+    [[-6,1],[-5,2],[-4,1],[-3,1],[-2,0],[-1,0]],
+  ];
+  const ws = wingShapes[wf];
+  // Left wing
+  for(let i=0;i<ws.length;i++){
+    const wx=ox+ws[i][0], wy=oy+ws[i][1];
+    px(bc,wx,wy,i<3?P.b5:P.b4);
+    px(bc,wx,wy+1,i<4?P.b3:P.b2);
+    if(i>0&&i<5) px(bc,wx,wy+2,P.b1);
+  }
+  // Right wing (mirrored)
+  for(let i=0;i<ws.length;i++){
+    const wx=ox+7-ws[i][0]-1, wy=oy+ws[i][1];
+    px(bc,wx,wy,i<3?P.b5:P.b4);
+    px(bc,wx,wy+1,i<4?P.b3:P.b2);
+    if(i>0&&i<5) px(bc,wx,wy+2,P.b1);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  6. RAT — Detailed fur, profile view, tail wag
+// ══════════════════════════════════════════════════════
+const RP = {
+  O:'#060606',
+  f0:'#1c1a18',f1:'#2c2820',f2:'#3c3830',f3:'#4c4840',f4:'#5c5848',f5:'#6c6858',
+  f6:'#808068',f7:'#949078',f8:'#a8a088',f9:'#bcb898',fA:'#d0c8a8',
+  t0:'#685848',t1:'#887868',t2:'#a89888',
+  n0:'#d8a0a0',e0:'#101010',
+};
+
+function drawRat(bc, frame) {
+  const P=RP, O=P.O, _=null;
+  const tw = frame % 2;
+  const ox=3, oy=17;
+
+  // Tail
+  if(tw===0){
+    px(bc,ox,oy-1,P.t0);hL(bc,ox+1,oy-2,[P.t1,P.t2]);px(bc,ox,oy-3,P.t1);px(bc,ox-1,oy-4,P.t0);
+  } else {
+    px(bc,ox,oy+4,P.t0);hL(bc,ox+1,oy+5,[P.t1,P.t2]);px(bc,ox,oy+6,P.t1);px(bc,ox-1,oy+7,P.t0);
+  }
+
+  // Ear
+  hL(bc,ox+25,oy-5,[O,P.f6,P.f7,O]);
+  hL(bc,ox+24,oy-4,[O,P.f5,P.f7,P.f8,P.f7,O]);
+
+  // Body — row by row with fur shading
+  hL(bc,ox+14,oy-4,[_,_,_,_,_,_,O,O,O,O,O,O]);
+  hL(bc,ox+10,oy-3,[_,_,O,O,O,O,P.f5,P.f6,P.f7,P.f8,P.f9,P.fA,P.f9,P.f8,O]);
+  hL(bc,ox+7,oy-2,[_,O,O,P.f3,P.f4,P.f5,P.f6,P.f7,P.f8,P.f9,P.fA,P.f9,P.f8,P.f9,P.fA,P.f9,O]);
+  hL(bc,ox+4,oy-1,[O,O,P.f2,P.f3,P.f4,P.f5,P.f6,P.f7,P.f8,P.f9,P.fA,P.f9,P.f8,P.f7,P.f8,P.f9,O,O,P.e0,_,O]);
+  hL(bc,ox+2,oy,[O,P.f1,P.f2,P.f3,P.f4,P.f5,P.f6,P.f7,P.f8,P.f9,P.fA,P.f9,P.f8,P.f7,P.f6,P.f7,P.f8,P.f9,O,_,_,P.n0]);
+  hL(bc,ox+2,oy+1,[O,P.f0,P.f1,P.f3,P.f4,P.f5,P.f6,P.f7,P.f8,P.f9,P.f8,P.f7,P.f6,P.f5,P.f5,P.f6,P.f7,O,O]);
+  hL(bc,ox+3,oy+2,[O,O,P.f1,P.f2,P.f3,P.f4,P.f5,P.f6,P.f7,P.f6,P.f5,P.f4,P.f4,P.f5,P.f6,O]);
+  hL(bc,ox+5,oy+3,[O,O,P.f1,P.f2,P.f3,P.f4,P.f5,P.f4,P.f3,P.f3,P.f4,O,O]);
+
+  // Legs
+  hL(bc,ox+7,oy+4,[O,P.f1,O,_,_,_,_,_,_,O,P.f1,O]);
+  hL(bc,ox+7,oy+5,[O,O,O,_,_,_,_,_,_,O,O,O]);
+
+  // Whiskers
+  px(bc,ox+25,oy-1,P.f8);px(bc,ox+26,oy-2,P.f5);
+  px(bc,ox+25,oy+1,P.f5);px(bc,ox+26,oy+2,P.f3);
+}
+
+// ══════════════════════════════════════════════════════
+//  7. CHEST — Wooden with metal bands, gold lock
+// ══════════════════════════════════════════════════════
+const CP = {
+  O:'#080608',
+  w0:'#201008',w1:'#382010',w2:'#503018',w3:'#684020',w4:'#805028',w5:'#986830',w6:'#b08038',w7:'#c89840',w8:'#e0b048',w9:'#f0c858',
+  m0:'#202020',m1:'#383838',m2:'#505050',m3:'#686868',m4:'#808080',m5:'#989898',
+  g0:'#504010',g1:'#786020',g2:'#a08030',g3:'#c8a840',g4:'#e8c850',g5:'#f8e060',
+};
+
+function drawChest(bc, frame) {
+  const P=CP, O=P.O, _=null;
+  const ox=4, oy=10;
+
+  // Lid top curve
+  hL(bc,ox+4,oy,[O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+  hL(bc,ox+2,oy+1,[O,O,P.w6,P.w7,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w7,P.w6,P.w5,P.w4,P.w3,O,O]);
+  hL(bc,ox+1,oy+2,[O,P.w4,P.w5,P.w6,P.w7,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w7,P.w6,P.w5,P.w4,P.w3,P.w2,O]);
+  hL(bc,ox,oy+3,[O,P.w3,P.w4,P.w5,P.w7,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w7,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,O]);
+  // Metal band on lid
+  hL(bc,ox,oy+4,[O,P.m0,P.m1,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m1,P.m2,P.m3,P.m1,P.m0,O]);
+  hL(bc,ox,oy+5,[O,P.w2,P.w3,P.w4,P.w5,P.w6,P.w7,P.w6,P.w7,P.w6,P.w7,P.w6,P.w7,P.w6,P.w7,P.w6,P.w7,P.w6,P.w7,P.w6,P.w5,P.w4,P.w3,P.w3,P.w2,P.w1,P.w1,O]);
+  // Divider line
+  hL(bc,ox-1,oy+6,[O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+  // Body
+  hL(bc,ox-1,oy+7,[O,P.w3,P.w4,P.w5,P.w6,P.w7,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w9,P.w8,P.w7,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,O]);
+  hL(bc,ox-1,oy+8,[O,P.w2,P.w3,P.w4,P.w5,P.w6,P.w7,P.w8,P.w7,P.w8,P.w7,P.w8,P.w7,P.w8,P.w7,P.w8,P.w7,P.w8,P.w7,P.w8,P.w7,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,P.w1,O]);
+  // Metal band on body
+  hL(bc,ox-1,oy+9,[O,P.m0,P.m1,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m3,P.m4,P.m5,P.m4,P.m3,P.m2,P.m1,P.m2,P.m3,P.m2,P.m0,P.m0,O]);
+  // Lock row
+  hL(bc,ox-1,oy+10,[O,P.w2,P.w3,P.w4,P.w5,P.w6,P.w7,P.w6,P.w7,P.w6,P.g0,P.g1,P.g2,P.g3,P.g4,P.g3,P.g2,P.g1,P.g0,P.w6,P.w7,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,P.w1,O]);
+  hL(bc,ox-1,oy+11,[O,P.w1,P.w2,P.w3,P.w4,P.w5,P.w6,P.w5,P.w6,P.w5,P.g0,P.g2,P.g3,P.g4,P.g5,P.g4,P.g3,P.g2,P.g0,P.w5,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,P.w1,P.w0,O]);
+  hL(bc,ox-1,oy+12,[O,P.w1,P.w2,P.w3,P.w4,P.w5,P.w6,P.w5,P.w6,P.w5,P.g0,P.g1,P.g2,P.g3,P.g4,P.g3,P.g2,P.g1,P.g0,P.w5,P.w6,P.w5,P.w4,P.w3,P.w2,P.w1,P.w0,P.w0,O]);
+  hL(bc,ox-1,oy+13,[O,P.w0,P.w1,P.w2,P.w3,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w5,P.w4,P.w3,P.w2,P.w1,P.w0,P.w0,P.w0,O]);
+  hL(bc,ox-1,oy+14,[O,P.w0,P.w1,P.w2,P.w3,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w4,P.w3,P.w2,P.w1,P.w1,P.w0,P.w0,P.w0,O]);
+  // Bottom
+  hL(bc,ox-1,oy+15,[O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+  // Feet
+  hL(bc,ox,oy+16,[O,P.m1,P.m2,O,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,O,P.m2,P.m1,O].slice(0,27));
+
+  // Lock shine
+  if(frame%10<2) px(bc,ox+13,oy+11,'#fff8e0');
+}
+
+// ══════════════════════════════════════════════════════
+//  8. SWORD — Blade with fuller, gold guard, leather grip
+// ══════════════════════════════════════════════════════
+const WP = {
+  O:'#060810',
+  s0:'#384050',s1:'#506070',s2:'#687888',s3:'#8098a8',s4:'#98b0c0',s5:'#b0c8d8',s6:'#c8e0f0',s7:'#e0f0ff',s8:'#f0f8ff',
+  g0:'#503810',g1:'#786020',g2:'#a08030',g3:'#c8a840',g4:'#e8c850',g5:'#f8e060',
+  h0:'#201008',h1:'#382818',h2:'#504028',h3:'#685838',h4:'#807048',
+  r0:'#881020',r1:'#c82030',r2:'#e84048',
+};
+
+function drawSword(bc, frame) {
+  const P=WP, O=P.O, _=null;
+  const ox=20, oy=4;
+
+  // Blade tip
+  px(bc,ox+1,oy,P.s8);
+  hL(bc,ox,oy+1,[O,P.s8,O]);
+  hL(bc,ox,oy+2,[O,P.s7,O]);
+  hL(bc,ox-1,oy+3,[O,P.s5,P.s7,P.s6,O]);
+  // Blade body — fuller (dark center groove) + highlight edge
+  for(let i=0;i<13;i++){
+    const p=i/13;
+    const dark=p>0.5?P.s0:P.s1;
+    const mid=p>0.5?P.s2:P.s3;
+    const full=p>0.3?P.s1:P.s2; // fuller
+    const edge=p>0.4?P.s4:P.s6;
+    hL(bc,ox-1,oy+4+i,[O,dark,full,edge,O]);
+  }
+  // Re-draw highlight edge on right side
+  for(let i=0;i<8;i++) px(bc,ox+2,oy+4+i,P.s7);
+
+  // Guard — ornate
+  hL(bc,ox-4,oy+17,[O,P.g1,P.g2,P.g3,P.g4,P.g5,P.g4,P.g3,P.g2,P.g1,O]);
+  hL(bc,ox-3,oy+18,[O,P.r0,P.r1,P.g3,P.r2,P.r1,P.g3,P.r0,O]);
+  hL(bc,ox-2,oy+19,[_,O,P.g0,P.g2,P.g3,P.g2,P.g0,O]);
+
+  // Handle — leather wrap
+  for(let i=0;i<6;i++){
+    const alt=i%2===0;
+    hL(bc,ox-1,oy+20+i,[O,alt?P.h1:P.h2,alt?P.h2:P.h3,alt?P.h3:P.h4,O]);
+  }
+
+  // Pommel
+  hL(bc,ox-2,oy+26,[O,P.g1,P.g2,P.g3,P.g4,P.g2,O]);
+  hL(bc,ox-1,oy+27,[_,O,P.g0,P.g1,O]);
+  px(bc,ox,oy+28,O);
+
+  // Glint
+  if(frame%16<3){
+    const gy=oy+5+(frame%16)*4;
+    if(gy<oy+16){px(bc,ox+1,gy,P.s8);px(bc,ox+2,gy,'#ffffff');}
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  ANIMATION LOOP — Skill: 7 FPS ticks, 60 FPS render
+// ══════════════════════════════════════════════════════
+drawFloor();
+let fr=0,lt=0;
+
+function loop(ts){
+  if(ts-lt>180){ // ~5.5 FPS animation tick
+    lt=ts; fr++;
+    const bob=fr%2===0?0:1;
+
+    // Knight
+    const ks=sprites.Knight;bg(ks.bc);drawKnight(ks.bc,bob);blit(ks);
+
+    // Skeleton
+    const ss=sprites.Skeleton;bg(ss.bc);drawSkeleton(ss.bc,bob);blit(ss);
+
+    // Slime
+    const ls=sprites.Slime;bg(ls.bc);drawSlime(ls.bc,fr);blit(ls);
+
+    // Bat
+    const bs=sprites.Bat;bg(bs.bc);drawBat(bs.bc,fr);blit(bs);
+
+    // Rat
+    const rs=sprites.Rat;bg(rs.bc);drawRat(rs.bc,fr);blit(rs);
+
+    // Chest
+    const cs=sprites.Chest;bg(cs.bc);drawChest(cs.bc,fr);blit(cs);
+
+    // Sword
+    const ws=sprites.Sword;bg(ws.bc);drawSword(ws.bc,fr);blit(ws);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

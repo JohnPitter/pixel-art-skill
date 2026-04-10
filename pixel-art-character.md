@@ -1,0 +1,338 @@
+---
+name: pixel-art-character
+description: Guide for creating pixel art characters, sprites, and game assets. Activates when user mentions pixel art, sprite, sprite sheet, pixel animation, retro game art, 8-bit characters, pixel character design, game sprites, canvas pixel drawing, tileset, or game assets.
+---
+
+# Pixel Art & Game Asset Creation
+
+Generate production-quality pixel art using AI tools (PixelLab, SpriteCook) and render/animate them in HTML5 Canvas.
+
+---
+
+## Approach: Choose the Right Tool for the Job
+
+| Goal | Best Approach |
+|------|---------------|
+| Production-quality sprites, characters, tilesets | **PixelLab or SpriteCook via MCP** — AI generates art indistinguishable from professional pixel artists |
+| Simple animated character demo | **Code-only (Buffer Canvas + hLine)** — good for prototypes, chibi-style characters |
+| Rendering & animating AI-generated sprites | **Canvas engine** — load sprite sheets, handle animation frames, input, particles |
+| Full game scene with multiple assets | **PixelLab/SpriteCook** for asset generation → **Canvas engine** for assembly and interaction |
+
+> **Key insight**: Code-only pixel art (hLine row-by-row) works for simple stylized characters but cannot match the quality of AI-generated sprites for detailed characters, environments, and tilesets. Use AI tools for asset generation and code for rendering/animation.
+
+---
+
+## 1. AI Asset Generation (Production Quality)
+
+### PixelLab — MCP Integration
+
+PixelLab generates pixel art characters, animations, and tilesets from text descriptions.
+
+**Setup with Claude Code:**
+
+```json
+// Add to .claude/settings.json or .mcp.json
+{
+  "mcpServers": {
+    "pixellab": {
+      "url": "https://api.pixellab.ai/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Get your API token at [pixellab.ai](https://www.pixellab.ai). Interactive setup at [pixellab.ai/vibe-coding](https://www.pixellab.ai/vibe-coding).
+
+**Available tools:**
+
+```
+create_character(description, n_directions)
+  → Generate character with 4 or 8 directional views
+  → Example: create_character("mushroom druid with staff", n_directions=4)
+
+animate_character(character_id, animation)
+  → Add walk/run/idle/attack animations to existing character
+  → Example: animate_character("abc123", "walk")
+
+create_tileset(lower, upper)
+  → Generate Wang tilesets for seamless terrain
+  → Example: create_tileset("grass", "dirt path")
+
+create_isometric_tile(description, size)
+  → Individual isometric tiles
+  → Example: create_isometric_tile("grass on top of dirt", 32)
+```
+
+**Workflow:**
+1. Generate character → returns job ID (processes in 2-5 min)
+2. Check job status → download sprite sheet when ready
+3. Animate character → generates walk/run/idle frames
+4. Export to sprite sheet → ready for game engine
+
+**Supported formats:** 32x32, 32x40, custom sizes. Styles: bipedal-realistic, quadrupedal-tiny, bipedal-semi-chibi.
+
+### SpriteCook — MCP Integration
+
+SpriteCook generates pixel art and HD game assets with style consistency.
+
+**Setup with Claude Code:**
+
+```bash
+# Automatic installer (Mac/Linux)
+bash -c "$(curl -fsSL https://spritecook.ai/install.sh)"
+
+# Windows PowerShell
+iwr -useb https://spritecook.ai/install.ps1 | iex
+```
+
+Or manual config:
+
+```json
+{
+  "mcpServers": {
+    "spritecook": {
+      "url": "https://api.spritecook.ai/mcp/",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+Get your API key at [app.spritecook.ai/api-keys](https://app.spritecook.ai/api-keys).
+
+**Key workflow — Style Consistency:**
+1. Generate ONE hero asset first (e.g., the main character)
+2. Use that asset's ID as style reference for all other assets
+3. This keeps art consistent across characters, items, props, and tilesets
+
+**Example prompt flow:**
+```
+"Generate a pixel art cow for a cozy farming game"
+→ Creates cow sprite with unique asset ID
+
+"Generate a barn in the same style as [cow asset ID]"
+→ Creates barn matching the cow's art style
+
+"Generate tree sprites in the same style"
+→ Consistent trees matching the whole set
+```
+
+**Capabilities:** Sprites, characters, items, tilesets, UI, backgrounds. Both pixel art and HD styles.
+
+### Other AI Tools
+
+| Tool | Best For |
+|------|----------|
+| **PixelBox** (llamagen.ai) | Free browser-based pixel art sprite animation |
+| **pixel-plugin** (Claude Code plugin) | Aseprite integration for natural language pixel art |
+| **Stable Diffusion + PixelArt LoRA** | Bulk generation with local GPU, then manual refinement |
+
+---
+
+## 2. Canvas Rendering Engine (Code Patterns)
+
+For rendering AI-generated sprites or building simple pixel art in code. Based on the mushroom druid reference implementation.
+
+### Buffer Canvas Pattern (Critical)
+
+Draw at 1:1 pixel scale on offscreen canvas, scale to display. This produces crisp, non-blurry pixels.
+
+```javascript
+// Offscreen buffer at sprite resolution
+const W = 56, H = 64;
+const buf = document.createElement('canvas');
+buf.width = W; buf.height = H;
+const bc = buf.getContext('2d');
+
+// Display canvas
+const display = document.getElementById('display');
+const dctx = display.getContext('2d');
+dctx.imageSmoothingEnabled = false; // CRITICAL
+
+// CSS: canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+// Blit: buffer → display
+const SCALE = 5;
+dctx.drawImage(buf, x, y, W * SCALE, H * SCALE);
+```
+
+### Loading & Rendering Sprite Sheets
+
+When using AI-generated sprite sheets:
+
+```javascript
+const sheet = new Image();
+sheet.src = 'character-spritesheet.png';
+sheet.onload = () => {
+  // Each frame is FRAME_W x FRAME_H in the sheet
+  const FRAME_W = 32, FRAME_H = 40;
+  const COLS = sheet.width / FRAME_W;
+
+  function drawFrame(frameIndex) {
+    const col = frameIndex % COLS;
+    const row = Math.floor(frameIndex / COLS);
+    dctx.drawImage(sheet,
+      col * FRAME_W, row * FRAME_H, FRAME_W, FRAME_H,  // source
+      x, y, FRAME_W * SCALE, FRAME_H * SCALE            // dest
+    );
+  }
+};
+```
+
+### Hue-Shifted Palette (for code-only sprites)
+
+When drawing sprites manually, use hue-shifted color ramps:
+
+```javascript
+const P = {
+  // Shadows → cool (blue/purple), highlights → warm (yellow/orange)
+  // Example: red mushroom cap
+  C0: '#4a1018',  // darkest (purple-shifted)
+  C3: '#c03830',  // base red
+  C7: '#f88868',  // brightest (orange-shifted)
+
+  // Example: green cloak
+  G0: '#102810',  // darkest (blue-shifted)
+  G4: '#489830',  // base green
+  G8: '#98e870',  // brightest (yellow-shifted)
+};
+```
+
+**Rule**: 5-8 tones per material, never pure value darkening.
+
+### Drawing Helpers
+
+```javascript
+function px(x, y, col) {
+  bc.fillStyle = col;
+  bc.fillRect(x, y, 1, 1);
+}
+
+function hLine(x, y, colors) {
+  for (let i = 0; i < colors.length; i++)
+    if (colors[i]) { bc.fillStyle = colors[i]; bc.fillRect(x+i, y, 1, 1); }
+}
+```
+
+### Modular Body Parts
+
+Split character into functions that animate independently:
+
+```javascript
+function drawCharacter(bob, blink, walkStep) {
+  bc.clearRect(0, 0, W, H);
+  const baseY = 6 + bob + walkBounce;  // body moves
+
+  drawStaff(baseX + 21, baseY + 2);
+  drawCap(baseX - 2, baseY);
+  drawFace(baseX + 5, baseY + 14, blink);
+  drawCloak(baseX + 5, baseY + 20, cloakSway);
+
+  // FEET: fixed Y — anchored to ground, no bob
+  drawFeet(baseX + 6, FIXED_FEET_Y, walkStep);
+}
+```
+
+---
+
+## 3. Animation System
+
+### State Machine
+
+```javascript
+const st = {
+  x: 180, dir: 1,
+  walking: false, walkDir: 0, walkFrame: -1,
+  animFrame: 0,
+  blinkTimer: 0, blink: false,
+  attackTimer: -1,
+  particles: [],
+};
+```
+
+### Grounding (Feet on Floor)
+
+```javascript
+const GROUND_Y = 288;
+const CHAR_DRAW_Y = GROUND_Y - feetRow * RENDER_SCALE;
+
+// Shadow follows character direction
+const shadowX = st.dir === 1 ? st.x + 68 : st.x + W * SCALE - 68;
+dctx.fillStyle = 'rgba(0,0,0,0.30)';
+dctx.beginPath();
+dctx.ellipse(shadowX, GROUND_Y, 32, 6, 0, 0, Math.PI * 2);
+dctx.fill();
+```
+
+### Walk Cycle (4 Frames)
+
+```
+Step 0: Contact — both feet down
+Step 1: Left forward — body dips 1px, cloak sways left
+Step 2: Passing — feet close
+Step 3: Right forward — body dips 1px, cloak sways right
+```
+
+### Direction Flipping
+
+```javascript
+if (st.dir === -1) {
+  dctx.save();
+  dctx.translate(display.width, 0);
+  dctx.scale(-1, 1);
+  dctx.drawImage(buf, display.width - st.x - W*SCALE, Y, W*SCALE, H*SCALE);
+  dctx.restore();
+}
+// ALL offsets must mirror: particles, shadow, effects
+const footX = st.dir === 1 ? st.x + 70 : st.x + W * SCALE - 70;
+```
+
+### Game Loop
+
+```javascript
+// Animation ticks at ~7 FPS (pixel art frames)
+// Movement at 60 FPS (smooth sliding)
+let lastTick = 0;
+function loop(ts) {
+  if (ts - lastTick > 150) { lastTick = ts; st.animFrame++; updateAnimations(); }
+  if (st.walking) { st.x += st.walkDir * 2; st.dir = st.walkDir; }
+  render();
+  requestAnimationFrame(loop);
+}
+```
+
+### Particle System
+
+```javascript
+function spawnParticle(x, y, type) {
+  const colors = type === 'magic'
+    ? ['#78e050','#50c038','#a0f070','#ccffcc']
+    : ['#68c848','#489830','#80d858'];
+  st.particles.push({
+    x: x + (Math.random()-0.5) * 20,
+    y: y - Math.random() * 10,
+    vx: (Math.random()-0.5) * 2,
+    vy: -Math.random() * 1.5 - 0.5,
+    life: 40 + Math.random() * 40, maxLife: 80,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    size: RENDER_SCALE,
+  });
+}
+```
+
+---
+
+## 4. Common Pitfalls
+
+| Mistake | Fix |
+|---------|-----|
+| No `imageSmoothingEnabled = false` | Set on display context before drawImage |
+| Bob applied to feet | Fixed feetY, only bob the body |
+| Shadow/particles don't flip | Mirror X: `st.x + W*SCALE - offset` |
+| Pillow shading | Pick ONE light direction |
+| Pure value shading | Hue shift: shadows→cool, highlights→warm |
+| Trying to hand-code production sprites | Use PixelLab/SpriteCook for quality art, code for rendering |

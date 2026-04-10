@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mushroom Druid — Pixel Art</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#161a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'Courier New',monospace;color:#e0e0e0;overflow:hidden}
+  h1{font-size:2.2rem;margin-bottom:2px;font-weight:800;background:linear-gradient(90deg,#fff,#bbb);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:#777;font-size:.85rem;margin-bottom:6px}.sub a{color:#6B7FD7;text-decoration:none}
+  .prompt{color:#555;font-size:1.7rem;margin-bottom:20px;letter-spacing:3px}.prompt span{color:#7B8CDE}
+  .wrap{display:flex;align-items:center;gap:24px}
+  canvas#display{image-rendering:pixelated;image-rendering:crisp-edges}
+  .btn{width:52px;height:52px;background:linear-gradient(180deg,#333348,#252538);border:2px solid #3a3a55;border-radius:8px;color:#888;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;user-select:none;box-shadow:0 3px 8px rgba(0,0,0,.4)}
+  .btn:hover{background:#3a3a5e;color:#ccc;border-color:#5a5a7e}
+  .btn:active{transform:scale(.9)}
+  .ground{width:460px;height:2px;background:linear-gradient(90deg,transparent,#2a2a4a 30%,#2a2a4a 70%,transparent)}
+  .label{margin-top:12px;padding:4px 14px;background:#1e2040;border:1px solid #2a2d50;border-radius:16px;font-size:.78rem;color:#7B8CDE}
+  .hint{margin-top:14px;color:#444;font-size:.72rem}
+</style>
+</head>
+<body>
+<h1>One prompt &rarr; Fully animated</h1>
+<p class="sub">This character was generated from a single text prompt.<br>Walk it around. <a href="#">Learn how</a></p>
+<div class="prompt">&gt; <span>mushroom druid</span></div>
+<div class="wrap">
+  <button class="btn" id="bL">&#9664;</button>
+  <canvas id="display" width="460" height="310"></canvas>
+  <button class="btn" id="bR">&#9654;</button>
+</div>
+<div class="ground"></div>
+<div class="label" id="lbl">idle</div>
+<p class="hint">&#8592; &#8594; to walk &middot; space to cast spell</p>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  MUSHROOM DRUID — Pixel-Perfect via Buffer Canvas
+// ══════════════════════════════════════════════════════
+
+const display = document.getElementById('display');
+const dctx = display.getContext('2d');
+dctx.imageSmoothingEnabled = false;
+
+// Offscreen sprite buffer (actual pixel art resolution)
+const W = 56, H = 64;
+const buf = document.createElement('canvas');
+buf.width = W; buf.height = H;
+const bc = buf.getContext('2d');
+
+// ── Palette ────────────────────────────────────────
+const P = {
+  // Outline
+  OL: '#12080a',   // main outline
+  OD: '#1e1018',   // dark outline variant
+  // Cap reds (hue-shifted: shadows → purple, highlights → orange)
+  C0: '#4a1018',   // darkest shadow
+  C1: '#6e1820',   // dark
+  C2: '#992828',   // dark-mid
+  C3: '#c03830',   // mid
+  C4: '#d84838',   // mid-light
+  C5: '#e85848',   // light
+  C6: '#f07058',   // highlight
+  C7: '#f88868',   // brightest
+  // Spots (cream/white)
+  S0: '#c8b898',   // spot shadow
+  S1: '#e0d0b0',   // spot mid
+  S2: '#f0e8d0',   // spot light
+  S3: '#fff8e8',   // spot bright
+  // Brim (warm brown)
+  B0: '#382018',   // brim darkest
+  B1: '#584030',   // brim dark
+  B2: '#785838',   // brim mid
+  B3: '#907048',   // brim light
+  B4: '#a88858',   // brim highlight
+  // Skin (warm peach)
+  K0: '#906848',   // skin shadow
+  K1: '#b08860',   // skin mid-dark
+  K2: '#c8a070',   // skin mid
+  K3: '#d8b888',   // skin light
+  K4: '#e8d0a0',   // skin highlight
+  K5: '#f0e0c0',   // skin brightest
+  // Eyes
+  EP: '#201008',   // pupil darkest
+  EM: '#382018',   // pupil mid
+  EW: '#f0e8e0',   // eye white
+  ES: '#ffffff',   // eye shine
+  // Mouth & cheeks
+  MO: '#905838',   // mouth
+  BL: '#d09090',   // blush
+  // Cloak greens (shadows → blue-shifted)
+  G0: '#102810',   // darkest
+  G1: '#184018',   // very dark
+  G2: '#285020',   // dark
+  G3: '#387028',   // dark-mid
+  G4: '#489830',   // mid
+  G5: '#58b040',   // mid-light
+  G6: '#68c848',   // light
+  G7: '#80d858',   // highlight
+  G8: '#98e870',   // brightest
+  // Staff (wood)
+  W0: '#281808',   // wood darkest
+  W1: '#403018',   // wood dark
+  W2: '#584020',   // wood mid
+  W3: '#705830',   // wood light
+  W4: '#887040',   // wood highlight
+  // Leaf on staff
+  L0: '#186010',   // leaf dark
+  L1: '#309828',   // leaf mid
+  L2: '#50c038',   // leaf light
+  L3: '#78e050',   // leaf bright
+  L4: '#a0f070',   // leaf brightest
+};
+
+// ── Pixel helpers ──────────────────────────────────
+function px(x, y, col) {
+  bc.fillStyle = col;
+  bc.fillRect(x, y, 1, 1);
+}
+
+function hLine(x, y, colors) {
+  for (let i = 0; i < colors.length; i++) {
+    if (colors[i]) { bc.fillStyle = colors[i]; bc.fillRect(x+i, y, 1, 1); }
+  }
+}
+
+// Draw a filled outlined ellipse-ish dome for the cap
+function drawCap(ox, oy) {
+  const O = P.OL;
+  // Row 0-1: very top of dome
+  hLine(ox+10, oy, [O,O,O,O,O,O,O,O]);
+  hLine(ox+7, oy+1, [O,O,P.C5,P.C6,P.C6,P.C7,P.C7,P.C6,P.C6,P.C5,P.C4,P.C3,O,O]);
+
+  // Row 2: wider
+  hLine(ox+5, oy+2, [O,O,P.C4,P.C5,P.C6,P.C6,P.C7,P.C7,P.C6,P.C6,P.C5,P.C5,P.C4,P.C3,P.C2,O,O]);
+
+  // Row 3: with spot
+  hLine(ox+4, oy+3, [O,P.C2,P.C3,P.C4,P.C5,P.S1,P.S2,P.S3,P.S2,P.C6,P.C5,P.C5,P.C4,P.C3,P.C3,P.C2,P.C1,O]);
+
+  // Row 4: big spot continues + smaller spot on right
+  hLine(ox+3, oy+4, [O,P.C1,P.C2,P.C3,P.S0,P.S1,P.S2,P.S3,P.S2,P.S1,P.C5,P.C4,P.C4,P.S1,P.S2,P.S1,P.C3,P.C2,P.C1,O]);
+
+  // Row 5
+  hLine(ox+2, oy+5, [O,P.C1,P.C2,P.C3,P.C4,P.S0,P.S1,P.S2,P.S1,P.S0,P.C5,P.C4,P.S0,P.S1,P.S2,P.S2,P.S1,P.C3,P.C2,P.C1,O]);
+
+  // Row 6
+  hLine(ox+1, oy+6, [O,P.C0,P.C1,P.C2,P.C3,P.C4,P.C5,P.C5,P.C4,P.C4,P.C4,P.C3,P.S0,P.S1,P.S2,P.S1,P.S0,P.C3,P.C2,P.C1,P.C0,O]);
+
+  // Row 7: widest part
+  hLine(ox+1, oy+7, [O,P.C0,P.C1,P.C2,P.C3,P.C3,P.C4,P.S1,P.S2,P.S1,P.C4,P.C3,P.C3,P.C3,P.C3,P.C3,P.C3,P.C2,P.C2,P.C1,P.C0,O]);
+
+  // Row 8
+  hLine(ox+1, oy+8, [O,P.C0,P.C1,P.C1,P.C2,P.C3,P.C3,P.S0,P.S1,P.S0,P.C3,P.C3,P.C2,P.C2,P.C2,P.C2,P.C2,P.C2,P.C1,P.C1,P.C0,O]);
+
+  // Row 9: bottom narrowing
+  hLine(ox+1, oy+9, [O,P.C0,P.C0,P.C1,P.C2,P.C2,P.C2,P.C3,P.C3,P.C2,P.C2,P.C2,P.C2,P.C1,P.C1,P.C1,P.C1,P.C1,P.C1,P.C0,P.C0,O]);
+
+  // Row 10: very bottom of cap dome
+  hLine(ox+2, oy+10, [O,P.C0,P.C0,P.C1,P.C1,P.C2,P.C2,P.C2,P.C2,P.C1,P.C1,P.C1,P.C1,P.C1,P.C0,P.C0,P.C0,P.C0,O,O]);
+
+  // Row 11: outline bottom
+  hLine(ox+1, oy+11, [O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+
+  // Brim
+  hLine(ox+3, oy+12, [O,P.B0,P.B1,P.B2,P.B3,P.B4,P.B4,P.B3,P.B3,P.B2,P.B3,P.B4,P.B3,P.B2,P.B1,P.B0,P.B0,O]);
+  hLine(ox+4, oy+13, [O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+}
+
+function drawFace(ox, oy, blink) {
+  const O = P.OL;
+  // Row 0: top of face under brim
+  hLine(ox+0, oy, [O,P.K1,P.K2,P.K3,P.K4,P.K5,P.K5,P.K4,P.K3,P.K2,P.K1,O]);
+
+  // Row 1: upper face
+  hLine(ox+0, oy+1, [O,P.K2,P.K3,P.K4,P.K5,P.K5,P.K5,P.K5,P.K4,P.K3,P.K2,O]);
+
+  if (blink) {
+    // Row 2: eyes closed
+    hLine(ox+0, oy+2, [O,P.K2,P.EM,P.EM,P.K4,P.K5,P.K5,P.K4,P.EM,P.EM,P.K2,O]);
+  } else {
+    // Row 2: eyes open - big cute eyes
+    hLine(ox+0, oy+2, [O,P.K2,P.EW,P.EP,P.K4,P.K5,P.K5,P.K4,P.EW,P.EP,P.K2,O]);
+    // Eye shine
+    px(ox+2, oy+2, P.ES);
+    px(ox+8, oy+2, P.ES);
+  }
+
+  // Row 3: cheeks + mouth
+  hLine(ox+0, oy+3, [O,P.BL,P.K2,P.K3,P.K3,P.MO,P.K3,P.K3,P.K2,P.BL,P.K1,O]);
+
+  // Row 4: lower face
+  hLine(ox+0, oy+4, [O,P.K1,P.K2,P.K3,P.K3,P.K3,P.K3,P.K3,P.K2,P.K1,P.K0,O]);
+
+  // Row 5: chin
+  hLine(ox+1, oy+5, [O,O,P.K1,P.K2,P.K2,P.K2,P.K2,P.K1,O,O]);
+}
+
+function drawCloak(ox, oy, sway) {
+  const O = P.OL;
+  const s = sway; // -1, 0, or 1
+
+  // Row 0: neck
+  hLine(ox+2, oy, [O,P.G2,P.G3,P.G4,P.G4,P.G3,P.G2,O]);
+
+  // Row 1: shoulders
+  hLine(ox+1, oy+1, [O,P.G1,P.G2,P.G4,P.G5,P.G5,P.G4,P.G3,P.G2,O]);
+
+  // Row 2: upper body
+  hLine(ox+0, oy+2, [O,P.G1,P.G2,P.G3,P.G5,P.G6,P.G7,P.G6,P.G4,P.G3,P.G2,O]);
+
+  // Row 3: chest with leaf fold detail
+  hLine(ox+0, oy+3, [O,P.G1,P.G2,P.G4,P.G5,P.G7,P.G6,P.G5,P.G5,P.G4,P.G2,P.G1,O]);
+
+  // Row 4: mid body
+  hLine(ox-1, oy+4, [O,P.G0,P.G1,P.G3,P.G4,P.G5,P.G6,P.G7,P.G6,P.G5,P.G3,P.G2,P.G1,O]);
+
+  // Row 5: lower mid body - leaf details
+  hLine(ox-1, oy+5, [O,P.G0,P.G2,P.G3,P.G5,P.G6,P.G8,P.G7,P.G6,P.G5,P.G4,P.G3,P.G1,O]);
+
+  // Row 6: waist area
+  hLine(ox-2, oy+6, [O,P.G0,P.G1,P.G2,P.G4,P.G5,P.G6,P.G7,P.G8,P.G7,P.G5,P.G4,P.G3,P.G1,O]);
+
+  // Row 7: lower body expands
+  hLine(ox-2, oy+7, [O,P.G0,P.G1,P.G3,P.G4,P.G5,P.G7,P.G6,P.G5,P.G6,P.G7,P.G5,P.G3,P.G2,O]);
+
+  // Row 8: widening cloak
+  hLine(ox-3+s, oy+8, [O,P.G0,P.G1,P.G2,P.G3,P.G5,P.G6,P.G7,P.G8,P.G7,P.G6,P.G5,P.G4,P.G3,P.G1,P.G0,O]);
+
+  // Row 9: near bottom
+  hLine(ox-3+s, oy+9, [O,P.G0,P.G1,P.G3,P.G4,P.G6,P.G7,P.G5,P.G4,P.G5,P.G7,P.G6,P.G4,P.G3,P.G2,P.G0,O]);
+
+  // Row 10: leaf edge starts
+  hLine(ox-4+s, oy+10, [O,P.G0,P.G1,P.G2,P.G4,P.G5,P.G7,P.G4,P.G2,P.G1,P.G3,P.G5,P.G7,P.G5,P.G3,P.G2,P.G1,O]);
+
+  // Row 11: jagged leaf edges
+  hLine(ox-4+s, oy+11, [null,O,P.G0,P.G1,P.G3,O,P.G4,P.G2,O,null,O,P.G2,P.G4,O,P.G3,P.G1,O]);
+
+  // Row 12: leaf tips
+  hLine(ox-3+s, oy+12, [null,null,O,O,null,null,O,null,null,null,null,O,null,null,O,O]);
+}
+
+function drawStaff(ox, oy) {
+  const O = P.OL;
+
+  // Leaf at top (3 small leaves sprouting)
+  px(ox+1, oy-5, P.L1);
+  px(ox+2, oy-5, P.L3);
+  px(ox, oy-4, P.L0);
+  px(ox+1, oy-4, P.L2);
+  px(ox+2, oy-4, P.L3);
+  px(ox+3, oy-4, P.L2);
+  px(ox, oy-3, P.L0);
+  px(ox+1, oy-3, P.L1);
+  px(ox+2, oy-3, P.L2);
+  px(ox+1, oy-2, O);
+
+  // Staff pole
+  for (let i = -1; i < 30; i++) {
+    let c;
+    if (i < 5) c = P.W4;
+    else if (i < 12) c = P.W3;
+    else if (i < 20) c = P.W2;
+    else c = P.W1;
+
+    px(ox+1, oy+i, c);
+
+    // Knots and bark texture
+    if (i === 3) { px(ox, oy+i, P.W2); px(ox+2, oy+i, P.W3); }
+    if (i === 8) { px(ox+2, oy+i, P.W1); }
+    if (i === 13) { px(ox, oy+i, P.W1); px(ox+2, oy+i, P.W2); }
+    if (i === 18) { px(ox+2, oy+i, P.W0); }
+    if (i === 23) { px(ox, oy+i, P.W0); }
+  }
+
+  // Staff outline top and bottom
+  px(ox+1, oy-1, O);
+  px(ox+1, oy+29, O);
+}
+
+function drawFeet(ox, oy, walkStep) {
+  const O = P.OL;
+  if (walkStep === 0) {
+    // Contact — both feet down, neutral
+    hLine(ox, oy, [O,P.W1,P.W2,O,null,O,P.W1,P.W2,O]);
+    hLine(ox, oy+1, [O,O,O,O,null,O,O,O,O]);
+  } else if (walkStep === 1) {
+    // Left foot steps forward, right back
+    hLine(ox-2, oy,   [O,P.W1,P.W2,O,null,null,null,null,O,P.W1,P.W2,O]);
+    hLine(ox-2, oy+1, [O,O,O,O,null,null,null,null,O,O,O,O]);
+  } else if (walkStep === 2) {
+    // Passing — feet cross, close together
+    hLine(ox, oy, [O,P.W1,P.W2,O,O,P.W1,P.W2,O]);
+    hLine(ox, oy+1, [O,O,O,O,O,O,O,O]);
+  } else {
+    // Right foot steps forward, left back
+    hLine(ox-1, oy,   [O,P.W1,P.W2,O,null,null,null,null,O,P.W1,P.W2,O]);
+    hLine(ox-1, oy+1, [O,O,O,O,null,null,null,null,O,O,O,O]);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  DRAW FULL CHARACTER
+// ═══════════════════════════════════════════════════
+
+function drawDruid(bob, blink, walkStep, showStaff) {
+  bc.clearRect(0, 0, W, H);
+
+  const baseX = 10;
+  // Walk bounce: body dips 1px at step 1 and 3 (mid-stride), rises at 0 and 2 (contact)
+  const walkBounce = (walkStep >= 0 && (walkStep === 1 || walkStep === 3)) ? 1 : 0;
+  const baseY = 6 + bob + walkBounce;
+
+  // Cloak sway during walk
+  const cloakSway = (walkStep === 1) ? -1 : (walkStep === 3) ? 1 : 0;
+
+  // Staff (behind character at right side)
+  if (showStaff) drawStaff(baseX + 21, baseY + 2);
+
+  // Mushroom cap
+  drawCap(baseX - 2, baseY);
+
+  // Face (centered under cap)
+  drawFace(baseX + 5, baseY + 14, blink);
+
+  // Cloak
+  drawCloak(baseX + 5, baseY + 20, cloakSway);
+
+  // Feet — always at fixed Y so they stay on ground (no bob)
+  const feetY = 6 + 32; // fixed position, no bob applied
+  drawFeet(baseX + 6, feetY, walkStep === -1 ? 0 : walkStep);
+}
+
+// ═══════════════════════════════════════════════════
+//  ANIMATION STATE
+// ═══════════════════════════════════════════════════
+const st = {
+  x: 160,
+  dir: 1,
+  walking: false,
+  walkDir: 0,
+  walkFrame: -1,
+  animFrame: 0,
+  blinkTimer: 0,
+  blink: false,
+  attackTimer: -1,
+  particles: [],
+};
+
+const RENDER_SCALE = 5;
+// Ground line Y — feet sit here
+const GROUND_Y = 288;
+// Character feet end at buffer row ~40, so drawY = GROUND_Y - 40*SCALE
+const CHAR_DRAW_Y = GROUND_Y - 42 * RENDER_SCALE;
+
+function spawnP(x, y, type) {
+  const cols = type === 'magic'
+    ? ['#78e050','#50c038','#a0f070','#ccffcc','#ffffff']
+    : ['#68c848','#489830','#80d858'];
+  st.particles.push({
+    x, y,
+    vx: (Math.random()-0.5)*2.5,
+    vy: -Math.random()*2 - 0.8,
+    life: 30 + Math.random()*35,
+    mx: 65,
+    c: cols[Math.floor(Math.random()*cols.length)],
+    sz: 2 + Math.random()*3,
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════════════
+const lbl = document.getElementById('lbl');
+let lastTick = 0;
+
+function loop(ts) {
+  // Tick at ~8 FPS for animation frames
+  if (ts - lastTick > 150) {
+    lastTick = ts;
+    st.animFrame++;
+
+    // Blink
+    st.blinkTimer++;
+    if (st.blinkTimer > 22 + Math.random()*25) {
+      st.blink = true;
+      if (st.blinkTimer > 25 + Math.random()*25) {
+        st.blink = false;
+        st.blinkTimer = 0;
+      }
+    }
+
+    // Walk frame
+    if (st.walking) {
+      st.walkFrame = (st.walkFrame + 1) % 4;
+    } else {
+      st.walkFrame = -1;
+    }
+
+    // Attack
+    if (st.attackTimer >= 0) {
+      st.attackTimer++;
+      if (st.attackTimer < 18 && st.animFrame % 2 === 0) {
+        const sx = st.x + (st.dir === 1 ? 140 : 20);
+        spawnP(sx, CHAR_DRAW_Y + 20 + Math.random()*30, 'magic');
+        spawnP(sx, CHAR_DRAW_Y + 10 + Math.random()*20, 'magic');
+      }
+      if (st.attackTimer > 25) st.attackTimer = -1;
+    }
+  }
+
+  // Smooth movement every frame
+  if (st.walking) {
+    st.x += st.walkDir * 2;
+    st.dir = st.walkDir;
+    if (st.x < 10) st.x = 10;
+    if (st.x > display.width - 160) st.x = display.width - 160;
+    if (st.animFrame % 3 === 0) {
+      // When flipped (dir=-1), feet are on the opposite side of the sprite
+      const footX = st.dir === 1 ? st.x + 70 : st.x + W * RENDER_SCALE - 70;
+      spawnP(footX, GROUND_Y - 20, 'leaf');
+    }
+  }
+
+  // ── Draw ────────────────
+  dctx.clearRect(0, 0, display.width, display.height);
+
+  // Ground line (subtle)
+  dctx.fillStyle = '#222240';
+  dctx.fillRect(30, GROUND_Y, display.width - 60, 1);
+
+  // Shadow — centered under character, accounts for flip
+  const shadowX = st.dir === 1 ? st.x + 68 : st.x + W * RENDER_SCALE - 68;
+  dctx.fillStyle = 'rgba(0,0,0,0.30)';
+  dctx.beginPath();
+  dctx.ellipse(shadowX, GROUND_Y, 32, 6, 0, 0, Math.PI*2);
+  dctx.fill();
+
+  // Draw character to buffer
+  const bob = st.animFrame % 2 === 0 ? 0 : 1;
+  drawDruid(bob, st.blink, st.walkFrame, true);
+
+  // Scale buffer to display — position so feet land on GROUND_Y
+  dctx.save();
+  if (st.dir === -1) {
+    dctx.translate(display.width, 0);
+    dctx.scale(-1, 1);
+    dctx.drawImage(buf, display.width - st.x - W*RENDER_SCALE, CHAR_DRAW_Y, W*RENDER_SCALE, H*RENDER_SCALE);
+  } else {
+    dctx.drawImage(buf, st.x, CHAR_DRAW_Y, W*RENDER_SCALE, H*RENDER_SCALE);
+  }
+  dctx.restore();
+
+  // Attack glow — positioned relative to staff top
+  if (st.attackTimer >= 0 && st.attackTimer < 25) {
+    const prog = st.attackTimer / 25;
+    const gx = st.x + (st.dir === 1 ? 145 : 15);
+    const gy = CHAR_DRAW_Y + 30;
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2 + prog*6;
+      const r = 8 + prog*45;
+      const ex = gx + Math.cos(a)*r;
+      const ey = gy + Math.sin(a)*r*0.6;
+      dctx.globalAlpha = Math.max(0, 1-prog)*0.7;
+      dctx.fillStyle = i%2===0 ? '#78e050' : '#a0f070';
+      dctx.fillRect(ex|0, ey|0, 4, 4);
+    }
+    dctx.globalAlpha = Math.max(0,1-prog)*0.3;
+    dctx.fillStyle = '#bbffbb';
+    dctx.beginPath();
+    dctx.arc(gx, gy, 6+prog*35, 0, Math.PI*2);
+    dctx.fill();
+    dctx.globalAlpha = 1;
+  }
+
+  // Particles
+  for (let i = st.particles.length-1; i >= 0; i--) {
+    const p = st.particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy -= 0.015; p.life--;
+    dctx.globalAlpha = Math.min(1, p.life/(p.mx*0.35));
+    dctx.fillStyle = p.c;
+    dctx.fillRect(p.x|0, p.y|0, p.sz, p.sz);
+    if (p.life <= 0) st.particles.splice(i, 1);
+  }
+  dctx.globalAlpha = 1;
+
+  // Label
+  lbl.textContent = st.attackTimer >= 0 ? 'casting' : st.walking ? 'walking' : 'idle';
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ── Input ──────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft')  { st.walking=true; st.walkDir=-1; e.preventDefault(); }
+  if (e.key==='ArrowRight') { st.walking=true; st.walkDir=1; e.preventDefault(); }
+  if (e.key===' ' && st.attackTimer<0) { st.attackTimer=0; e.preventDefault(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.key==='ArrowLeft'  && st.walkDir===-1) st.walking=false;
+  if (e.key==='ArrowRight' && st.walkDir===1)  st.walking=false;
+});
+
+const bL=document.getElementById('bL'), bR=document.getElementById('bR');
+bL.onmousedown=()=>{st.walking=true;st.walkDir=-1};
+bL.onmouseup=bL.onmouseleave=()=>{if(st.walkDir===-1)st.walking=false};
+bR.onmousedown=()=>{st.walking=true;st.walkDir=1};
+bR.onmouseup=bR.onmouseleave=()=>{if(st.walkDir===1)st.walking=false};
+bL.ontouchstart=e=>{e.preventDefault();st.walking=true;st.walkDir=-1};
+bL.ontouchend=e=>{e.preventDefault();if(st.walkDir===-1)st.walking=false};
+bR.ontouchstart=e=>{e.preventDefault();st.walking=true;st.walkDir=1};
+bR.ontouchend=e=>{e.preventDefault();if(st.walkDir===1)st.walking=false};
+display.onclick=()=>{if(st.attackTimer<0)st.attackTimer=0};
+</script>
+</body>
+</html>
