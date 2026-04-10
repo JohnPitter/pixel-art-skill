@@ -429,3 +429,6 @@ function spawnParticle(x, y, type) {
 | Pure value shading | Muddy, lifeless colors | Hue shift: shadows→cool, highlights→warm |
 | No AA on curves | Jagged dome/circle edges | Add 1px intermediate color on staircase steps >1px |
 | `O` undefined in draw function | ReferenceError crash | Each draw function must define `const O = P.XX` locally, or use `P.XX` directly |
+| Weapon drawn on wrong side in buffer | Attack goes backward when sprite is flipped | Sprite faces RIGHT in buffer. Draw weapon attacks to the RIGHT (positive X). The `scale(-1,1)` flip will mirror it correctly |
+| Weapon/effects not passed attack state | Sprites stay in idle pose during attack | Pass `attacking` boolean to draw functions: `drawSprite(bc, bob, walkStep, attacking)` |
+| Shadow drawn after character | Shadow overlaps character's feet | Draw order: background → ground → shadows → character sprites → effects → particles → UI |

@@ -74,6 +74,26 @@ Pack completo com Floor, Knight, Skeleton, Slime, Bat, Rat, Chest e Sword.
 
 > **Prompt usado**: *"Cria 8 assets de pixel art para um roguelike starter pack"*
 
+### Medieval Knight — Personagem Interativo
+
+Cavaleiro com armadura blue-steel, capa vermelha, espada com animacao de slash.
+
+<div align="center">
+<img src="assets/knight.png" alt="Medieval Knight" width="600" />
+</div>
+
+> **Prompt usado**: *"Cria um medieval knight pixel art com animacao de walk e slash"*
+
+### Battle Arena — Mushroom Druid vs Knight
+
+Arena de batalha com AI, HP bars, hit effects, knockback, damage numbers e particulas.
+
+<div align="center">
+<img src="assets/battle.png" alt="Battle Arena" width="600" />
+</div>
+
+> **Prompt usado**: *"Cria uma batalha entre o mushroom druid e o knight"*
+
 ---
 
 ## Como Funciona
@@ -204,10 +224,14 @@ pixel-art-skill/
   pixel-art-character.md     # A skill — copie para .claude/skills/
   README.md
   assets/
-    mushroom-druid.png       # Screenshot do demo
+    mushroom-druid.png       # Screenshot do druid
+    knight.png               # Screenshot do knight
+    battle.png               # Screenshot da arena de batalha
     roguelike-pack.png       # Screenshot do asset pack
   examples/
-    mushroom-druid.html      # Demo interativo completo
+    mushroom-druid.html      # Druid interativo (idle, walk, cast)
+    knight.html              # Knight interativo (idle, walk, slash)
+    battle.html              # Arena de batalha com AI e combate
     roguelike-pack.html      # 8 assets animados
 ```
 

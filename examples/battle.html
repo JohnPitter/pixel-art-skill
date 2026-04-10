@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battle — Mushroom Druid vs Knight</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0c0e1c;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'Courier New',monospace;color:#e0e0e0;overflow:hidden}
+h1{font-size:1.6rem;margin-bottom:4px;font-weight:800;background:linear-gradient(90deg,#f88,#88f);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#555;font-size:.75rem;margin-bottom:12px}
+canvas#arena{image-rendering:pixelated;image-rendering:crisp-edges;border-radius:8px;border:1px solid #1a1a3a}
+.hint{margin-top:12px;color:#444;font-size:.72rem}
+.status{margin-top:8px;padding:4px 14px;background:#1e2040;border:1px solid #2a2d50;border-radius:16px;font-size:.78rem;color:#7B8CDE}
+</style>
+</head>
+<body>
+<h1>Mushroom Druid vs Knight</h1>
+<p class="sub">pixel art battle arena</p>
+<canvas id="arena"></canvas>
+<div class="status" id="status">FIGHT!</div>
+<p class="hint">&#8592; &#8594; move &middot; space cast spell &middot; R restart</p>
+<script>
+// ══════════════════════════════════════════════════
+//  BATTLE ARENA — Two characters, AI, combat system
+//  Skill patterns: buffer canvas, selout, grounding,
+//  HiDPI fix, hue-shifted palettes, modular body parts
+// ══════════════════════════════════════════════════
+
+const arena = document.getElementById('arena');
+const DPR = window.devicePixelRatio || 1;
+const AW = 640, AH = 320;
+arena.width = AW * DPR; arena.height = AH * DPR;
+arena.style.width = AW + 'px'; arena.style.height = AH + 'px';
+const ctx = arena.getContext('2d');
+ctx.scale(DPR, DPR);
+ctx.imageSmoothingEnabled = false;
+
+const SCALE = 4;
+const GROUND_Y = 275;
+
+// ── Two sprite buffers ──
+function makeBuf(w,h){ const c=document.createElement('canvas');c.width=w;c.height=h;return{c,x:c.getContext('2d')}; }
+const druidBuf = makeBuf(56,64);
+const knightBuf = makeBuf(56,64);
+
+function px(bc,x,y,c){bc.fillStyle=c;bc.fillRect(x,y,1,1);}
+function hL(bc,x,y,cs){for(let i=0;i<cs.length;i++)if(cs[i]){bc.fillStyle=cs[i];bc.fillRect(x+i,y,1,1);}}
+
+// ══════════════════════════════════════════════════
+//  MUSHROOM DRUID — Palette & Drawing
+// ══════════════════════════════════════════════════
+const DP = {
+  OC:'#3a1014',OB:'#2a1810',OF:'#2a1810',OG:'#0c1c0c',OW:'#1a1008',OL:'#10080a',
+  C0:'#3e0c14',C1:'#4a1018',C2:'#5c1418',C3:'#72201e',C4:'#8c2828',C5:'#a83030',
+  C6:'#c03838',C7:'#d44440',C8:'#e45448',C9:'#f06850',CA:'#f88060',CB:'#ffa878',
+  S0:'#a89070',S1:'#c0a888',S2:'#d0b898',S3:'#e0d0b0',S4:'#e8dcc0',S5:'#f0e8d0',S6:'#fff8e8',
+  B0:'#2c1810',B1:'#483020',B2:'#604018',B3:'#785828',B4:'#907040',B5:'#a88858',B6:'#c0a070',
+  K0:'#786040',K1:'#987850',K2:'#b09060',K3:'#c0a070',K4:'#d0b888',K5:'#e0d0a0',K6:'#f0e0c0',K7:'#f8f0d8',
+  EO:'#181008',ED:'#281810',EM:'#402820',EI:'#583828',EL:'#704830',EW:'#e0d8c8',ES:'#ffffff',EB:'#d09090',MO:'#885040',
+  G0:'#081808',G1:'#102810',G2:'#183818',G3:'#204820',G4:'#286028',G5:'#308030',G6:'#38a038',G7:'#48b840',G8:'#58c848',G9:'#68d850',GA:'#80e860',GB:'#98f078',GV:'#a8f888',
+  W0:'#201008',W1:'#382018',W2:'#503020',W3:'#684028',W4:'#805030',W5:'#986840',
+  L0:'#185010',L1:'#288020',L2:'#40a830',L3:'#58d040',L4:'#78e858',L5:'#a0f880',
+};
+
+function drawDruidSprite(bc, bob, blink, walkStep, attacking) {
+  const P=DP,_=null;
+  bc.clearRect(0,0,56,64);
+  const baseX=10, walkBounce=(walkStep>=0&&(walkStep===1||walkStep===3))?1:0;
+  const baseY=6+bob+walkBounce, cloakSway=(walkStep===1)?-1:(walkStep===3)?1:0;
+
+  // Staff — shifts forward and up when attacking
+  const atkOff = attacking ? 3 : 0;
+  const atkUp = attacking ? -4 : 0;
+  const sx=baseX+22+atkOff, sy=baseY+2+atkUp;
+  // Leaf — glows bright when attacking
+  if (attacking) {
+    px(bc,sx-1,sy-8,P.L4);px(bc,sx+2,sy-8,P.L4);
+    px(bc,sx,sy-7,P.L4);px(bc,sx+1,sy-7,P.L5);
+    px(bc,sx-1,sy-6,P.L3);px(bc,sx,sy-6,P.L5);px(bc,sx+1,sy-6,'#c0ff90');px(bc,sx+2,sy-6,P.L5);
+    px(bc,sx-1,sy-5,P.L2);px(bc,sx,sy-5,P.L4);px(bc,sx+1,sy-5,P.L5);px(bc,sx+2,sy-5,P.L3);
+    px(bc,sx,sy-4,P.L1);px(bc,sx+1,sy-4,P.L3);
+  } else {
+    px(bc,sx,sy-7,P.L2);px(bc,sx+1,sy-7,P.L4);
+    px(bc,sx-1,sy-6,P.L1);px(bc,sx,sy-6,P.L3);px(bc,sx+1,sy-6,P.L5);px(bc,sx+2,sy-6,P.L3);
+    px(bc,sx-1,sy-5,P.L0);px(bc,sx,sy-5,P.L2);px(bc,sx+1,sy-5,P.L4);
+    px(bc,sx,sy-4,P.L0);px(bc,sx+1,sy-4,P.L1);
+  }
+  px(bc,sx+1,sy-3,P.OW);
+  for(let i=-2;i<28;i++){let c=i<4?P.W5:i<10?P.W4:i<18?P.W3:P.W2;px(bc,sx+1,sy+i,c);if(i===5){px(bc,sx,sy+i,P.W3);px(bc,sx+2,sy+i,P.W4);}if(i===12){px(bc,sx,sy+i,P.W1);px(bc,sx+2,sy+i,P.W2);}if(i===19)px(bc,sx+2,sy+i,P.W1);if(i===24)px(bc,sx,sy+i,P.W0);if(i%3===0&&i>0)px(bc,sx+1,sy+i,i<12?P.W4:P.W1);}
+  px(bc,sx+1,sy-2,P.OW);px(bc,sx+1,sy+27,P.OW);
+
+  // Cap
+  const O=P.OC,Oa=P.C0,ox=baseX-2,oy=baseY;
+  hL(bc,ox+10,oy-1,[Oa,Oa,Oa,Oa,Oa,Oa,Oa,Oa]);
+  hL(bc,ox+9,oy,[Oa,O,O,O,O,O,O,O,O,Oa]);
+  hL(bc,ox+7,oy+1,[Oa,O,P.C8,P.C9,P.CA,P.CB,P.CA,P.C9,P.C8,P.C7,P.C6,O,Oa]);
+  hL(bc,ox+5,oy+2,[Oa,O,P.C6,P.C7,P.C8,P.C9,P.CA,P.CB,P.CA,P.C9,P.C8,P.C7,P.C6,P.C5,O,Oa]);
+  hL(bc,ox+4,oy+3,[O,P.C4,P.C5,P.C6,P.S2,P.S3,P.S5,P.S6,P.S5,P.S3,P.C8,P.C7,P.C7,P.C6,P.C5,P.C4,O]);
+  hL(bc,ox+3,oy+4,[O,P.C3,P.C4,P.S0,P.S1,P.S3,P.S5,P.S6,P.S5,P.S3,P.S1,P.C7,P.C6,P.S2,P.S4,P.S5,P.S3,P.C5,P.C4,O]);
+  hL(bc,ox+2,oy+5,[O,P.C2,P.C3,P.C5,P.S0,P.S2,P.S4,P.S5,P.S3,P.S1,P.C7,P.C6,P.S1,P.S3,P.S5,P.S5,P.S3,P.S1,P.C4,P.C3,P.C2,O]);
+  hL(bc,ox+1,oy+6,[O,P.C1,P.C2,P.C3,P.C5,P.C6,P.C7,P.C8,P.C7,P.C7,P.C6,P.C5,P.S0,P.S2,P.S4,P.S3,P.S1,P.C5,P.C4,P.C3,P.C2,P.C1,O]);
+  hL(bc,ox+1,oy+7,[O,P.C1,P.C2,P.C3,P.C4,P.C5,P.C6,P.S2,P.S4,P.S5,P.S3,P.C6,P.C5,P.C5,P.C5,P.C5,P.C5,P.C4,P.C3,P.C2,P.C1,P.C1,O]);
+  hL(bc,ox+1,oy+8,[O,P.C1,P.C1,P.C2,P.C3,P.C4,P.C5,P.S0,P.S2,P.S3,P.S1,P.C5,P.C4,P.C4,P.C4,P.C4,P.C4,P.C3,P.C3,P.C2,P.C1,P.C1,O]);
+  hL(bc,ox+1,oy+9,[O,P.C0,P.C1,P.C2,P.C3,P.C3,P.C4,P.C5,P.C5,P.C4,P.C4,P.C3,P.C3,P.C3,P.C3,P.C3,P.C3,P.C2,P.C2,P.C1,P.C0,P.C0,O]);
+  hL(bc,ox+2,oy+10,[O,P.C0,P.C0,P.C1,P.C2,P.C3,P.C4,P.C4,P.C3,P.C3,P.C2,P.C2,P.C2,P.C2,P.C1,P.C1,P.C0,P.C0,O,Oa]);
+  hL(bc,ox+1,oy+11,[O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O]);
+  hL(bc,ox+3,oy+12,[P.OB,P.B1,P.B2,P.B3,P.B4,P.B5,P.B6,P.B5,P.B5,P.B4,P.B5,P.B6,P.B5,P.B4,P.B3,P.B2,P.B1,P.OB]);
+  hL(bc,ox+4,oy+13,[P.OB,P.B0,P.B1,P.B2,P.B1,P.B2,P.B1,P.B2,P.B1,P.B2,P.B1,P.B2,P.B1,P.B0,P.OB,P.OB]);
+  hL(bc,ox+5,oy+14,[P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB,P.OB]);
+
+  // Face
+  const fx=baseX+5,fy=baseY+15,Of=P.OF;
+  hL(bc,fx,fy,[Of,P.K2,P.K3,P.K4,P.K5,P.K6,P.K7,P.K6,P.K5,P.K4,P.K3,Of]);
+  if(blink){
+    hL(bc,fx,fy+1,[Of,P.K3,P.K4,P.K5,P.K6,P.K7,P.K7,P.K6,P.K5,P.K4,P.K3,Of]);
+    hL(bc,fx,fy+2,[Of,P.K3,P.EO,P.ED,P.EO,P.K6,P.K6,P.EO,P.ED,P.EO,P.K3,Of]);
+    hL(bc,fx,fy+3,[Of,P.EB,P.K3,P.K4,P.K5,P.K6,P.K6,P.K5,P.K4,P.K3,P.EB,Of]);
+  } else {
+    hL(bc,fx,fy+1,[Of,P.K3,P.EO,P.ED,P.EO,P.K6,P.K6,P.EO,P.ED,P.EO,P.K3,Of]);
+    hL(bc,fx,fy+2,[Of,P.K3,P.ED,P.EI,P.ED,P.K6,P.K6,P.ED,P.EI,P.ED,P.K3,Of]);
+    px(bc,fx+2,fy+1,P.ES);px(bc,fx+7,fy+1,P.ES);
+    px(bc,fx+3,fy+2,P.EL);px(bc,fx+8,fy+2,P.EL);
+    hL(bc,fx,fy+3,[Of,P.EB,P.EO,P.ED,P.EO,P.K5,P.K5,P.EO,P.ED,P.EO,P.EB,Of]);
+  }
+  hL(bc,fx,fy+4,[Of,P.K2,P.K3,P.K4,P.K5,P.MO,P.MO,P.K5,P.K4,P.K3,P.K2,Of]);
+  hL(bc,fx,fy+5,[Of,P.K1,P.K2,P.K3,P.K4,P.K5,P.K5,P.K4,P.K3,P.K2,P.K1,Of]);
+  hL(bc,fx+1,fy+6,[P.OF,P.K0,P.K1,P.K2,P.K3,P.K3,P.K2,P.K1,P.K0,P.OF]);
+
+  // Cloak
+  const cx=baseX+5,cy=baseY+22,Og=P.OG,s=cloakSway;
+  hL(bc,cx+2,cy,[Og,P.G3,P.G4,P.G5,P.G5,P.G4,P.G3,Og]);
+  hL(bc,cx+1,cy+1,[Og,P.G2,P.G3,P.G5,P.G6,P.G7,P.G6,P.G5,P.G3,Og]);
+  hL(bc,cx,cy+2,[Og,P.G2,P.G3,P.G4,P.G6,P.G8,P.G9,P.G8,P.G6,P.G4,P.G3,Og]);
+  hL(bc,cx,cy+3,[Og,P.G1,P.G3,P.G5,P.G7,P.G9,P.GA,P.G8,P.G6,P.G5,P.G3,P.G2,Og]);
+  hL(bc,cx-1,cy+4,[Og,P.G1,P.G2,P.G4,P.G6,P.G7,P.G9,P.GA,P.G9,P.G7,P.G5,P.G3,P.G2,Og]);
+  px(bc,cx+3,cy+4,P.GV);
+  hL(bc,cx-1,cy+5,[Og,P.G1,P.G3,P.G5,P.G7,P.G8,P.GA,P.GB,P.GA,P.G8,P.G6,P.G4,P.G2,Og]);
+  px(bc,cx+7,cy+5,P.GV);
+  hL(bc,cx-2,cy+6,[Og,P.G0,P.G2,P.G3,P.G5,P.G7,P.G8,P.GA,P.GB,P.GA,P.G8,P.G6,P.G4,P.G2,Og]);
+  hL(bc,cx-2+s,cy+7,[Og,P.G0,P.G1,P.G3,P.G5,P.G7,P.G9,P.GA,P.G8,P.G7,P.G9,P.GA,P.G7,P.G4,P.G2,Og]);
+  hL(bc,cx-3+s,cy+8,[Og,P.G0,P.G1,P.G3,P.G5,P.G7,P.G9,P.GA,P.GB,P.GA,P.G8,P.G7,P.G9,P.GA,P.G8,P.G4,P.G2,Og]);
+  hL(bc,cx-3+s,cy+9,[Og,P.G0,P.G2,P.G4,P.G6,P.G8,P.GA,P.G9,P.G6,P.G5,P.G7,P.G9,P.GA,P.G8,P.G5,P.G3,P.G1,Og]);
+  hL(bc,cx-4+s,cy+10,[Og,P.G0,P.G2,P.G4,P.G7,P.G9,P.G6,P.G3,Og,P.G1,P.G4,P.G7,P.G9,P.G7,P.G4,P.G2,P.G0,Og]);
+  hL(bc,cx-4+s,cy+11,[P.OL,Og,P.G1,P.G4,P.G7,Og,P.G3,Og,_,Og,P.G3,P.G6,Og,P.G6,P.G3,Og,Og,P.OL]);
+  hL(bc,cx-3+s,cy+12,[_,Og,P.G0,Og,_,_,Og,_,_,_,Og,Og,_,Og,Og]);
+
+  // Feet — FIXED Y
+  const feetY=6+35,Ow=P.OW;
+  if(walkStep===1){hL(bc,baseX+3,feetY,[Ow,P.W2,P.W3,P.W4,Ow,_,_,_,_,Ow,P.W2,P.W3,P.W4,Ow]);hL(bc,baseX+3,feetY+1,[Ow,P.W1,P.W1,Ow,Ow,_,_,_,_,Ow,P.W1,P.W1,Ow,Ow]);}
+  else if(walkStep===3){hL(bc,baseX+4,feetY,[Ow,P.W2,P.W3,P.W4,Ow,_,_,_,_,Ow,P.W2,P.W3,P.W4,Ow]);hL(bc,baseX+4,feetY+1,[Ow,P.W1,P.W1,Ow,Ow,_,_,_,_,Ow,P.W1,P.W1,Ow,Ow]);}
+  else{hL(bc,baseX+5,feetY,[Ow,P.W2,P.W3,P.W4,Ow,_,Ow,P.W2,P.W3,P.W4,Ow]);hL(bc,baseX+5,feetY+1,[Ow,P.W1,P.W1,Ow,Ow,_,Ow,P.W1,P.W1,Ow,Ow]);}
+}
+
+// ══════════════════════════════════════════════════
+//  KNIGHT — Palette & Drawing (simplified for battle)
+// ══════════════════════════════════════════════════
+const KP = {
+  OA:'#101828',OC:'#200810',OS:'#181008',OG:'#282010',OL:'#0a0810',
+  A0:'#101828',A1:'#182038',A2:'#202848',A3:'#283858',A4:'#304868',A5:'#386080',A6:'#487898',A7:'#5890b0',A8:'#68a8c8',A9:'#80c0e0',AA:'#98d0e8',AB:'#b0e0f0',
+  C0:'#180408',C1:'#300810',C2:'#481018',C3:'#681820',C4:'#882028',C5:'#a83038',C6:'#c84048',C7:'#e05058',C8:'#f06868',C9:'#f88080',
+  K0:'#604830',K1:'#886848',K2:'#a88860',K3:'#c0a078',
+  G0:'#382808',G1:'#584010',G2:'#786020',G3:'#a08030',G4:'#c8a840',G5:'#e8c858',G6:'#f8e070',
+  W0:'#283040',W1:'#384858',W2:'#506878',W3:'#688898',W4:'#80a8b8',W5:'#98c0d0',W6:'#b0d8e8',W7:'#c8e8f8',W8:'#e0f0ff',
+  P0:'#481018',P1:'#802028',P2:'#b83038',P3:'#e04848',P4:'#f06060',
+  EG:'#4888b0',
+};
+
+function drawKnightSprite(bc, bob, walkStep, attacking) {
+  const P=KP;
+  bc.clearRect(0,0,56,64);
+  const baseX=15, walkBounce=(walkStep>=0&&(walkStep===1||walkStep===3))?1:0;
+  const baseY=4+bob+walkBounce, cloakSway=(walkStep===1)?-1:(walkStep===3)?1:0;
+  // Attack: body leans forward 1px
+  const atkLean = attacking ? 1 : 0;
+
+  // Cape
+  const cpx=baseX+12,cpy=baseY+11;
+  hL(bc,cpx,cpy,[P.OC,P.C2,P.C3,P.C4,P.OC]);
+  hL(bc,cpx,cpy+1,[P.OC,P.C2,P.C4,P.C5,P.C6,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+2,[P.OC,P.C1,P.C3,P.C5,P.C6,P.C7,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+3,[P.OC,P.C1,P.C3,P.C5,P.C7,P.C8,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+4,[P.OC,P.C1,P.C2,P.C4,P.C6,P.C7,P.C8,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+5,[P.OC,P.C0,P.C2,P.C4,P.C5,P.C7,P.C8,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+6,[P.OC,P.C0,P.C2,P.C3,P.C5,P.C6,P.C7,P.C8,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+7,[P.OC,P.C0,P.C1,P.C3,P.C5,P.C6,P.C8,P.C7,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+8,[P.OC,P.C0,P.C1,P.C3,P.C4,P.C6,P.C7,P.C8,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+9,[P.OC,P.C0,P.C1,P.C2,P.C4,P.C5,P.C7,P.C6,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+10,[null,P.OC,P.C0,P.C1,P.C3,P.C5,P.C6,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+11,[null,null,P.OC,P.C0,P.C2,P.C4,P.OC]);
+  hL(bc,cpx+cloakSway,cpy+12,[null,null,null,P.OC,P.C0,P.OC]);
+
+  // Sword — swings FORWARD (right in buffer, which becomes correct after flip)
+  if (attacking) {
+    // Sword extended horizontally to the RIGHT = forward facing direction
+    const swY = baseY + 10;
+    const swX = baseX + 13; // right side of body
+    for (let i = 0; i < 8; i++) {
+      const c = i < 2 ? P.W5 : i < 4 ? P.W6 : i < 6 ? P.W7 : P.W8;
+      px(bc, swX + i, swY, c);
+      if (i < 6) px(bc, swX + i, swY - 1, P.W3); // blade thickness
+    }
+    // Guard
+    hL(bc, swX - 2, swY - 1, [P.G2, P.G3]);
+    hL(bc, swX - 2, swY, [P.G3, P.G4]);
+    hL(bc, swX - 2, swY + 1, [P.G2, P.G3]);
+    // Hand
+    px(bc, swX - 1, swY, P.K1); px(bc, swX - 1, swY + 1, P.K2);
+    // Slash trail glow at tip
+    px(bc, swX + 8, swY, '#c8e8ff'); px(bc, swX + 9, swY, '#e0f0ff');
+  } else {
+    // Sword at rest (vertical, left side)
+    px(bc,baseX-1,baseY+4,P.W8);px(bc,baseX-1,baseY+5,P.W7);px(bc,baseX-1,baseY+6,P.W6);
+    px(bc,baseX-1,baseY+7,P.W5);px(bc,baseX-1,baseY+8,P.W4);px(bc,baseX-1,baseY+9,P.W3);
+    hL(bc,baseX-2,baseY+10,[P.OG,P.G2,P.G3,P.OG]);
+    px(bc,baseX-1,baseY+11,P.K0);px(bc,baseX-1,baseY+12,P.K1);
+  }
+
+  // Plume
+  hL(bc,baseX+5,baseY,[P.P1,P.P2,P.P3]);
+  hL(bc,baseX+4,baseY+1,[P.P0,P.P1,P.P2,P.P3,P.P4]);
+  hL(bc,baseX+4,baseY+2,[P.P0,P.P1,P.P3,P.P4,P.P3]);
+
+  // Helmet
+  const hx=baseX+1,hy=baseY+3;
+  hL(bc,hx+2,hy,[P.A0,P.OA,P.OA,P.OA,P.OA,P.OA,P.OA,P.OA,P.OA,P.A0]);
+  hL(bc,hx+1,hy+1,[P.OA,P.A4,P.A5,P.A7,P.A8,P.A9,P.AA,P.A9,P.A7,P.A5,P.A4,P.OA]);
+  hL(bc,hx,hy+2,[P.OA,P.A3,P.A4,P.A6,P.A7,P.A9,P.AA,P.AB,P.A9,P.A7,P.A5,P.A3,P.OA]);
+  hL(bc,hx,hy+3,[P.OA,P.A2,P.A4,P.A5,P.A7,P.A8,P.AA,P.AB,P.AA,P.A8,P.A6,P.A4,P.OA]);
+  hL(bc,hx,hy+4,[P.OA,P.A2,P.A3,P.A5,P.A7,P.A9,P.AA,P.A9,P.A7,P.A5,P.A3,P.A2,P.OA]);
+  hL(bc,hx,hy+5,[P.OA,P.A1,P.A2,P.OA,P.EG,P.A6,P.A7,P.A6,P.EG,P.OA,P.A2,P.A1,P.OA]);
+  hL(bc,hx,hy+6,[P.OA,P.A1,P.A3,P.A4,P.A5,P.A6,P.A7,P.A6,P.A5,P.A4,P.A3,P.A1,P.OA]);
+  hL(bc,hx+1,hy+7,[P.OA,P.A1,P.A2,P.A3,P.A4,P.A5,P.A4,P.A3,P.A2,P.A1,P.OA]);
+
+  // Neck
+  hL(bc,baseX+5,baseY+12,[P.OS,P.K0,P.K1,P.K2,P.K1,P.OS]);
+
+  // Shoulders + chest
+  hL(bc,baseX+1,baseY+13,[P.OA,P.A1,P.A3,P.A5,P.A6,P.A7,P.A8,P.A7,P.A6,P.A5,P.A3,P.A2,P.OA]);
+  hL(bc,baseX,baseY+14,[P.OA,P.A1,P.A2,P.A4,P.A5,P.A6,P.A8,P.A8,P.A7,P.A5,P.A4,P.A3,P.A1,P.OA]);
+  hL(bc,baseX+1,baseY+15,[P.OA,P.A1,P.A3,P.A4,P.A6,P.A7,P.A8,P.A7,P.A6,P.A4,P.A3,P.A1,P.OA]);
+  hL(bc,baseX+1,baseY+16,[P.OA,P.A1,P.A3,P.A5,P.A6,P.A8,P.A8,P.A8,P.A6,P.A5,P.A3,P.A1,P.OA]);
+  hL(bc,baseX+1,baseY+17,[P.OA,P.A1,P.A2,P.A4,P.A5,P.A7,P.A8,P.A7,P.A5,P.A4,P.A2,P.A1,P.OA]);
+  hL(bc,baseX+1,baseY+18,[P.OA,P.A1,P.A2,P.A3,P.A5,P.A6,P.A7,P.A6,P.A5,P.A3,P.A2,P.A1,P.OA]);
+  // Belt
+  hL(bc,baseX+2,baseY+19,[P.OG,P.G1,P.G2,P.G3,P.G4,P.G5,P.G6,P.G5,P.G3,P.G2,P.OG]);
+
+  // Legs — FIXED Y
+  const legsY=4+20, sep=(walkStep===1||walkStep===3)?2:0;
+  const lOff=walkStep===1?-1:walkStep===3?1:0, rOff=walkStep===1?1:walkStep===3?-1:0;
+  for(let i=0;i<6;i++){
+    hL(bc,baseX+2+lOff,legsY+i,[P.OA,P.A2,P.A4,P.A5+Math.min(i,2),P.A6,P.OA]);
+    hL(bc,baseX+7+sep+rOff,legsY+i,[P.OA,P.A6,P.A5+Math.min(i,2),P.A4,P.A3,P.OA]);
+  }
+  // Boots — FIXED Y
+  const bootsY=4+26;
+  hL(bc,baseX+1+lOff,bootsY,[P.OA,P.A1,P.A2,P.A4,P.A5,P.A4,P.OA]);
+  hL(bc,baseX+1+lOff,bootsY+1,[P.OA,P.OA,P.OA,P.OA,P.OA,P.OA,P.OA]);
+  hL(bc,baseX+6+sep+rOff,bootsY,[P.OA,P.A4,P.A5,P.A3,P.A2,P.A1,P.OA]);
+  hL(bc,baseX+6+sep+rOff,bootsY+1,[P.OA,P.OA,P.OA,P.OA,P.OA,P.OA,P.OA]);
+}
+
+// ══════════════════════════════════════════════════
+//  BATTLE STATE
+// ══════════════════════════════════════════════════
+const MAX_HP = 100;
+function makeChar(x, dir, name) {
+  return { x, dir, name, hp: MAX_HP, walkFrame: -1, walking: false, walkDir: 0,
+    animFrame: 0, blinkTimer: 0, blink: false, attackTimer: -1, attackCooldown: 0,
+    hitTimer: 0, dead: false };
+}
+
+let druid = makeChar(80, 1, 'Mushroom Druid');
+let knight = makeChar(460, -1, 'Knight');
+let particles = [];
+let gameOver = false;
+let gameOverTimer = 0;
+
+function spawnP(x, y, colors, count) {
+  for (let i = 0; i < (count||3); i++) {
+    particles.push({
+      x: x+(Math.random()-.5)*30, y: y-(Math.random()*15),
+      vx: (Math.random()-.5)*4, vy: -Math.random()*3-1,
+      life: 20+Math.random()*25, mx: 45,
+      c: colors[Math.floor(Math.random()*colors.length)],
+      sz: 2+Math.random()*3,
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  KNIGHT AI — approach, attack, retreat
+// ══════════════════════════════════════════════════
+function updateAI() {
+  if (knight.dead || gameOver) return;
+  const dist = Math.abs(knight.x - druid.x);
+  knight.dir = knight.x > druid.x ? -1 : 1;
+
+  if (knight.attackTimer >= 0) return; // busy attacking
+
+  if (dist > 120) {
+    // Approach
+    knight.walking = true;
+    knight.walkDir = knight.dir;
+  } else if (dist < 80) {
+    // Too close — back up
+    knight.walking = true;
+    knight.walkDir = -knight.dir;
+  } else {
+    // In range — attack
+    knight.walking = false;
+    if (knight.attackCooldown <= 0 && Math.random() < 0.08) {
+      knight.attackTimer = 0;
+      knight.attackCooldown = 30;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  COMBAT — Hit detection, damage, effects
+// ══════════════════════════════════════════════════
+function checkHit(attacker, defender, range) {
+  if (defender.dead || defender.hitTimer > 0) return;
+  const dist = Math.abs(attacker.x - defender.x);
+  const facing = (attacker.dir === 1 && attacker.x < defender.x) ||
+                 (attacker.dir === -1 && attacker.x > defender.x);
+  if (dist < range && facing) {
+    const dmg = 8 + Math.floor(Math.random() * 8);
+    defender.hp = Math.max(0, defender.hp - dmg);
+    defender.hitTimer = 12;
+    // Knockback
+    defender.x += attacker.dir * 15;
+    // Hit particles
+    const hx = defender.x + 50;
+    const hy = GROUND_Y - 80;
+    if (attacker === druid) {
+      spawnP(hx, hy, ['#78e050','#50c038','#a0f070','#ccffcc','#fff'], 8);
+    } else {
+      spawnP(hx, hy, ['#98d0e8','#b0e0f0','#fff','#c8e8f8'], 8);
+    }
+    // Damage number
+    particles.push({
+      x: hx, y: hy - 20, vx: 0, vy: -1.5, life: 30, mx: 30,
+      c: '#ff4444', sz: 0, text: '-' + dmg
+    });
+    if (defender.hp <= 0) {
+      defender.dead = true;
+      gameOver = true;
+      gameOverTimer = 0;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  UPDATE
+// ══════════════════════════════════════════════════
+let lastTick = 0;
+const statusEl = document.getElementById('status');
+
+function update(ts) {
+  if (ts - lastTick < 120) return;
+  lastTick = ts;
+
+  for (const ch of [druid, knight]) {
+    if (ch.dead) continue;
+    ch.animFrame++;
+    if (ch.hitTimer > 0) ch.hitTimer--;
+    if (ch.attackCooldown > 0) ch.attackCooldown--;
+
+    // Blink (druid only)
+    if (ch === druid) {
+      ch.blinkTimer++;
+      if (ch.blinkTimer > 22+Math.random()*25) {
+        ch.blink = true;
+        if (ch.blinkTimer > 25+Math.random()*25) { ch.blink = false; ch.blinkTimer = 0; }
+      }
+    }
+
+    // Walk frame
+    if (ch.walking && ch.attackTimer < 0) ch.walkFrame = (ch.walkFrame+1) % 4;
+    else ch.walkFrame = -1;
+
+    // Attack
+    if (ch.attackTimer >= 0) {
+      ch.attackTimer++;
+      if (ch.attackTimer === 5) {
+        checkHit(ch, ch === druid ? knight : druid, ch === druid ? 160 : 110);
+      }
+      if (ch.attackTimer > 18) ch.attackTimer = -1;
+    }
+  }
+
+  // Movement (smooth)
+  for (const ch of [druid, knight]) {
+    if (ch.dead || ch.attackTimer >= 0) continue;
+    if (ch.walking) {
+      ch.x += ch.walkDir * 2.5;
+      ch.dir = ch.walkDir;
+      if (ch.x < 20) ch.x = 20;
+      if (ch.x > AW - 120) ch.x = AW - 120;
+    }
+  }
+
+  updateAI();
+
+  if (gameOver) {
+    gameOverTimer++;
+    statusEl.textContent = druid.dead ? 'KNIGHT WINS!' : 'DRUID WINS!';
+  } else {
+    statusEl.textContent = 'FIGHT!';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════
+function drawHP(x, y, hp, name, color) {
+  const w = 80, h = 6;
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(x, y, w+2, h+2);
+  ctx.fillStyle = '#1a1a2a';
+  ctx.fillRect(x+1, y+1, w, h);
+  const filled = Math.max(0, (hp/MAX_HP) * w);
+  ctx.fillStyle = hp > 50 ? color : hp > 25 ? '#e8a030' : '#e83030';
+  ctx.fillRect(x+1, y+1, filled, h);
+  ctx.fillStyle = '#888';
+  ctx.font = '9px monospace';
+  ctx.fillText(name, x, y - 4);
+}
+
+function render() {
+  ctx.clearRect(0, 0, AW, AH);
+  ctx.imageSmoothingEnabled = false;
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, AH);
+  grad.addColorStop(0, '#0e1020');
+  grad.addColorStop(1, '#161a2e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, AW, AH);
+
+  // Ground
+  ctx.fillStyle = '#222240';
+  ctx.fillRect(20, GROUND_Y, AW - 40, 1);
+
+  // HP bars
+  drawHP(30, 20, druid.hp, 'Mushroom Druid', '#48b840');
+  drawHP(AW - 112, 20, knight.hp, 'Knight', '#5890b0');
+
+  // Characters — draw order: shadows first, then sprites on top
+  const bob = (druid.animFrame % 2 === 0) ? 0 : 1;
+
+  // Druid feet bottom = row 43 (feetY=41 + 2 rows). Knight boots bottom = row 32.
+  const dDrawY = GROUND_Y - 43 * SCALE;
+  const kDrawY = GROUND_Y - 32 * SCALE;
+
+  // Shadows — BEHIND characters at ground level
+  if (!druid.dead) {
+    const dShadowX = druid.dir === 1 ? druid.x + 55 : druid.x + 56*SCALE - 55;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(dShadowX, GROUND_Y, 26, 5, 0, 0, Math.PI*2); ctx.fill();
+  }
+  if (!knight.dead) {
+    const kShadowX = knight.dir === 1 ? knight.x + 65 : knight.x + 56*SCALE - 65;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(kShadowX, GROUND_Y, 26, 5, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Druid sprite
+  if (!druid.dead) {
+    const dAtk = druid.attackTimer >= 0 && druid.attackTimer < 15;
+    drawDruidSprite(druidBuf.x, bob, druid.blink, druid.walkFrame, dAtk);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (druid.hitTimer > 0 && druid.hitTimer % 3 === 0) ctx.globalAlpha = 0.3; // flash
+    if (druid.dir === -1) {
+      ctx.translate(AW, 0); ctx.scale(-1, 1);
+      ctx.drawImage(druidBuf.c, AW - druid.x - 56*SCALE, dDrawY, 56*SCALE, 64*SCALE);
+    } else {
+      ctx.drawImage(druidBuf.c, druid.x, dDrawY, 56*SCALE, 64*SCALE);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // Knight sprite
+  if (!knight.dead) {
+    const kAtk = knight.attackTimer >= 0 && knight.attackTimer < 15;
+    drawKnightSprite(knightBuf.x, bob, knight.walkFrame, kAtk);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (knight.hitTimer > 0 && knight.hitTimer % 3 === 0) ctx.globalAlpha = 0.3;
+    if (knight.dir === -1) {
+      ctx.translate(AW, 0); ctx.scale(-1, 1);
+      ctx.drawImage(knightBuf.c, AW - knight.x - 56*SCALE, kDrawY, 56*SCALE, 64*SCALE);
+    } else {
+      ctx.drawImage(knightBuf.c, knight.x, kDrawY, 56*SCALE, 64*SCALE);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // Attack effects
+  if (druid.attackTimer >= 0 && druid.attackTimer < 18) {
+    const prog = druid.attackTimer / 18;
+    const gx = druid.x + (druid.dir === 1 ? 130 : -30);
+    const gy = GROUND_Y - 100;
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2 + prog*6;
+      const r = 8 + prog*50;
+      ctx.globalAlpha = Math.max(0, 1-prog)*0.7;
+      ctx.fillStyle = i%2===0 ? '#78e050' : '#a0f070';
+      ctx.fillRect((gx+Math.cos(a)*r)|0, (gy+Math.sin(a)*r*0.5)|0, 4, 4);
+    }
+    ctx.globalAlpha = Math.max(0,1-prog)*0.3;
+    ctx.fillStyle = '#bbffbb';
+    ctx.beginPath(); ctx.arc(gx, gy, 6+prog*35, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (knight.attackTimer >= 0 && knight.attackTimer < 18) {
+    const prog = knight.attackTimer / 18;
+    const gx = knight.x + (knight.dir === 1 ? 100 : -10);
+    const gy = GROUND_Y - 80;
+    for (let i = 0; i < 8; i++) {
+      const a = -0.5 + (i/8)*Math.PI + prog*2;
+      const r = 15 + prog*45;
+      ctx.globalAlpha = Math.max(0,1-prog)*0.6;
+      ctx.fillStyle = i%2===0 ? '#b0e0f0' : '#e0f0ff';
+      ctx.fillRect((gx+Math.cos(a)*r)|0, (gy+Math.sin(a)*r*0.4)|0, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Particles
+  for (let i = particles.length-1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life--;
+    ctx.globalAlpha = Math.min(1, p.life/(p.mx*0.4));
+    if (p.text) {
+      ctx.fillStyle = p.c;
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(p.text, p.x|0, p.y|0);
+    } else {
+      ctx.fillStyle = p.c;
+      ctx.fillRect(p.x|0, p.y|0, p.sz, p.sz);
+    }
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // Game over overlay
+  if (gameOver && gameOverTimer > 20) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, AW, AH);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(druid.dead ? 'KNIGHT WINS!' : 'DRUID WINS!', AW/2, AH/2 - 10);
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Press R to restart', AW/2, AH/2 + 20);
+    ctx.textAlign = 'start';
+  }
+}
+
+function loop(ts) {
+  update(ts);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ── Input ──
+document.addEventListener('keydown', e => {
+  if (druid.dead || gameOver) {
+    if (e.key === 'r' || e.key === 'R') {
+      druid = makeChar(80, 1, 'Mushroom Druid');
+      knight = makeChar(460, -1, 'Knight');
+      particles = [];
+      gameOver = false;
+      gameOverTimer = 0;
+    }
+    return;
+  }
+  if (e.key === 'ArrowLeft')  { druid.walking = true; druid.walkDir = -1; e.preventDefault(); }
+  if (e.key === 'ArrowRight') { druid.walking = true; druid.walkDir = 1; e.preventDefault(); }
+  if (e.key === ' ' && druid.attackTimer < 0 && druid.attackCooldown <= 0) {
+    druid.attackTimer = 0;
+    druid.attackCooldown = 15;
+    e.preventDefault();
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' && druid.walkDir === -1) druid.walking = false;
+  if (e.key === 'ArrowRight' && druid.walkDir === 1) druid.walking = false;
+});
+</script>
+</body>
+</html>
