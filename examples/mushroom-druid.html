@@ -36,7 +36,17 @@ canvas#display{image-rendering:pixelated;image-rendering:crisp-edges}
 //  MUSHROOM DRUID V2 — Selout + AA + Dithering
 // ══════════════════════════════════════════════════════
 const display = document.getElementById('display');
+
+// HiDPI fix — sharp pixels on Retina/high-DPR screens
+const DPR = window.devicePixelRatio || 1;
+const CSS_W = 460, CSS_H = 310;
+display.width = CSS_W * DPR;
+display.height = CSS_H * DPR;
+display.style.width = CSS_W + 'px';
+display.style.height = CSS_H + 'px';
+
 const dctx = display.getContext('2d');
+dctx.scale(DPR, DPR);
 dctx.imageSmoothingEnabled = false;
 
 const W = 56, H = 64;
@@ -96,13 +106,15 @@ const P = {
   K6: '#f0e0c0',
   K7: '#f8f0d8',
 
-  // === EYES ===
-  EP: '#181008',  // pupil
-  EM: '#302010',  // pupil mid
-  EI: '#503820',  // iris
-  EW: '#e8e0d0',  // white
-  ES: '#ffffff',  // shine
-  EB: '#c88888',  // blush
+  // === EYES — rich palette for 3x3 round eyes ===
+  EO: '#181008',  // eye socket outline
+  ED: '#281810',  // eye dark (main fill)
+  EM: '#402820',  // eye mid-dark
+  EI: '#583828',  // iris warm brown
+  EL: '#704830',  // iris light (reflection)
+  EW: '#e0d8c8',  // sclera white
+  ES: '#ffffff',  // shine highlight
+  EB: '#d09090',  // blush
   MO: '#885040',  // mouth
 
   // === CLOAK GREENS — shadows→blue-teal, highlights→yellow (12 tones) ===
@@ -208,30 +220,48 @@ function drawCap(ox, oy) {
 
 function drawFace(ox, oy, blink) {
   const O = P.OF;
+
   // Row 0: forehead under brim
   hL(ox,oy,[O,P.K2,P.K3,P.K4,P.K5,P.K6,P.K7,P.K6,P.K5,P.K4,P.K3,O]);
-  // Row 1: upper face
-  hL(ox,oy+1,[O,P.K3,P.K4,P.K5,P.K6,P.K7,P.K7,P.K6,P.K5,P.K4,P.K3,O]);
 
   if (blink) {
-    // Eyes closed — horizontal lines
-    hL(ox,oy+2,[O,P.K3,P.EM,P.EM,P.K5,P.K6,P.K6,P.K5,P.EM,P.EM,P.K3,O]);
-    hL(ox,oy+3,[O,P.K2,P.K3,P.K4,P.K5,P.K6,P.K6,P.K5,P.K4,P.K3,P.K2,O]);
+    // Row 1: upper face with closed eye lids
+    hL(ox,oy+1,[O,P.K3,P.K4,P.K5,P.K6,P.K7,P.K7,P.K6,P.K5,P.K4,P.K3,O]);
+    // Row 2: eyes closed — curved line
+    hL(ox,oy+2,[O,P.K3,P.EO,P.ED,P.EO,P.K6,P.K6,P.EO,P.ED,P.EO,P.K3,O]);
+    // Row 3: under eyes
+    hL(ox,oy+3,[O,P.EB,P.K3,P.K4,P.K5,P.K6,P.K6,P.K5,P.K4,P.K3,P.EB,O]);
   } else {
-    // Row 2: eyes — 3 wide per eye (white, iris, pupil) with shine
-    hL(ox,oy+2,[O,P.K3,P.EW,P.EI,P.EP,P.K6,P.K6,P.EW,P.EI,P.EP,P.K3,O]);
-    // Shine pixels (overwrite)
-    px(ox+2,oy+2,P.ES);
-    px(ox+8,oy+2,P.ES);
-    // Row 3: lower eye + blush
-    hL(ox,oy+3,[O,P.EB,P.EW,P.EM,P.K5,P.K6,P.K6,P.EW,P.EM,P.EB,P.K2,O]);
+    // ── 3x3 round eyes with depth ──
+    // Row 1: eye top — rounded top edge, sclera visible
+    //        pos:  0  1    2    3    4    5    6    7    8    9   10   11
+    hL(ox,oy+1,[O,P.K3,P.EO,P.ED,P.EO,P.K6,P.K6,P.EO,P.ED,P.EO,P.K3,O]);
+
+    // Row 2: eye mid — iris with warm gradient, shine on left eye
+    //        Left eye: EW(sclera) EI(iris warm) ED(dark)
+    //        Right eye: EW(sclera) EI(iris warm) ED(dark)
+    hL(ox,oy+2,[O,P.K3,P.ED,P.EI,P.ED,P.K6,P.K6,P.ED,P.EI,P.ED,P.K3,O]);
+
+    // Shine — top-left of each eye (light from upper-left)
+    // Left eye cols: 2,3,4 → shine at 2 (left)
+    // Right eye cols: 7,8,9 → shine at 7 (left, same relative position)
+    px(ox+2, oy+1, P.ES);
+    px(ox+7, oy+1, P.ES);
+
+    // Iris light reflection — center of each eye
+    // Left eye center: col 3 | Right eye center: col 8
+    px(ox+3, oy+2, P.EL);
+    px(ox+8, oy+2, P.EL);
+
+    // Row 3: eye bottom — rounded bottom, blush on sides
+    hL(ox,oy+3,[O,P.EB,P.EO,P.ED,P.EO,P.K5,P.K5,P.EO,P.ED,P.EO,P.EB,O]);
   }
 
-  // Row 4: mouth — small curve
+  // Row 4: cheeks + mouth — small cute smile
   hL(ox,oy+4,[O,P.K2,P.K3,P.K4,P.K5,P.MO,P.MO,P.K5,P.K4,P.K3,P.K2,O]);
   // Row 5: lower face
   hL(ox,oy+5,[O,P.K1,P.K2,P.K3,P.K4,P.K5,P.K5,P.K4,P.K3,P.K2,P.K1,O]);
-  // Row 6: chin — selout lighter
+  // Row 6: chin — selout lighter outline
   hL(ox+1,oy+6,[P.OF,P.K0,P.K1,P.K2,P.K3,P.K3,P.K2,P.K1,P.K0,P.OF]);
 }
 
@@ -417,7 +447,7 @@ function loop(ts) {
     st.x += st.walkDir * 2;
     st.dir = st.walkDir;
     if (st.x < 10) st.x = 10;
-    if (st.x > display.width - 160) st.x = display.width - 160;
+    if (st.x > CSS_W - 160) st.x = CSS_W - 160;
     if (st.animFrame % 3 === 0) {
       const footX = st.dir === 1 ? st.x + 70 : st.x + W * RENDER_SCALE - 70;
       spawnP(footX, GROUND_Y - 20, 'leaf');
@@ -425,11 +455,12 @@ function loop(ts) {
   }
 
   // ── Render ──
-  dctx.clearRect(0, 0, display.width, display.height);
+  dctx.clearRect(0, 0, CSS_W, CSS_H);
+  dctx.imageSmoothingEnabled = false;
 
   // Ground
   dctx.fillStyle = '#222240';
-  dctx.fillRect(30, GROUND_Y, display.width - 60, 1);
+  dctx.fillRect(30, GROUND_Y, CSS_W - 60, 1);
 
   // Shadow
   const shadowX = st.dir === 1 ? st.x + 68 : st.x + W * RENDER_SCALE - 68;
@@ -444,9 +475,10 @@ function loop(ts) {
 
   dctx.save();
   if (st.dir === -1) {
-    dctx.translate(display.width, 0);
+    dctx.translate(CSS_W, 0);
     dctx.scale(-1, 1);
-    dctx.drawImage(buf, display.width - st.x - W*RENDER_SCALE, CHAR_DRAW_Y, W*RENDER_SCALE, H*RENDER_SCALE);
+    dctx.imageSmoothingEnabled = false;
+    dctx.drawImage(buf, CSS_W - st.x - W*RENDER_SCALE, CHAR_DRAW_Y, W*RENDER_SCALE, H*RENDER_SCALE);
   } else {
     dctx.drawImage(buf, st.x, CHAR_DRAW_Y, W*RENDER_SCALE, H*RENDER_SCALE);
   }

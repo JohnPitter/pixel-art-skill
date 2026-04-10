@@ -148,15 +148,34 @@ const buf = document.createElement('canvas');
 buf.width = W; buf.height = H;
 const bc = buf.getContext('2d');
 
-// Display canvas
+// Display canvas — with HiDPI/Retina fix
 const display = document.getElementById('display');
+const DPR = window.devicePixelRatio || 1;
+const CSS_W = 460, CSS_H = 310;
+display.width = CSS_W * DPR;
+display.height = CSS_H * DPR;
+display.style.width = CSS_W + 'px';
+display.style.height = CSS_H + 'px';
+
 const dctx = display.getContext('2d');
+dctx.scale(DPR, DPR);
 dctx.imageSmoothingEnabled = false; // CRITICAL
 
 // CSS: canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 
-// Blit: buffer → display
+// IMPORTANT: use CSS_W/CSS_H (not display.width) for coordinates after DPR scaling
 const SCALE = 5;
+dctx.drawImage(buf, x, y, W * SCALE, H * SCALE);
+```
+
+**HiDPI/Retina fix**: On screens with `devicePixelRatio > 1`, the canvas backing store must be scaled up to match device pixels. Without this, the browser interpolates between CSS pixels causing blurry sprites. After `dctx.scale(DPR, DPR)`, all coordinates stay in CSS pixels but render at native resolution.
+
+**Critical**: After this fix, always use `CSS_W`/`CSS_H` instead of `display.width`/`display.height` for coordinate math (translate, clearRect, bounds checks). `display.width` is now the DPR-scaled physical size.
+
+**Re-enforce smoothing**: `imageSmoothingEnabled` can reset after `save/restore` or `scale`. Re-set it before every `drawImage`:
+
+```javascript
+dctx.imageSmoothingEnabled = false; // re-enforce before blit
 dctx.drawImage(buf, x, y, W * SCALE, H * SCALE);
 ```
 
@@ -314,16 +333,25 @@ const st = {
 ### Grounding (Feet on Floor)
 
 ```javascript
-const GROUND_Y = 288;
-const CHAR_DRAW_Y = GROUND_Y - feetRow * RENDER_SCALE;
+const GROUND_Y = 290;
 
-// Shadow follows character direction
+// CRITICAL: Calculate CHAR_DRAW_Y from the ACTUAL bottom row of feet/boots
+// in the buffer, NOT a guess. Count the exact buffer row where the last
+// boot pixel is drawn, then anchor that to GROUND_Y.
+//
+// Example: if bootsY = 32 and boots are 2 rows tall → bottom = row 34
+const BOOTS_BOTTOM_ROW = 34; // measure this from your drawBoots function!
+const CHAR_DRAW_Y = GROUND_Y - BOOTS_BOTTOM_ROW * RENDER_SCALE;
+
+// Shadow follows character direction (CSS_W, not display.width after DPR fix)
 const shadowX = st.dir === 1 ? st.x + 68 : st.x + W * SCALE - 68;
 dctx.fillStyle = 'rgba(0,0,0,0.30)';
 dctx.beginPath();
 dctx.ellipse(shadowX, GROUND_Y, 32, 6, 0, 0, Math.PI * 2);
 dctx.fill();
 ```
+
+**Common bug**: Setting `CHAR_DRAW_Y` with a wrong row number causes the character to float above ground. Always trace the exact buffer row of the lowest pixel in `drawBoots`/`drawFeet` and use that value.
 
 ### Walk Cycle (4 Frames)
 
@@ -337,11 +365,13 @@ Step 3: Right forward — body dips 1px, cloak sways right
 ### Direction Flipping
 
 ```javascript
+// IMPORTANT: use CSS_W (not display.width) after DPR fix
 if (st.dir === -1) {
   dctx.save();
-  dctx.translate(display.width, 0);
+  dctx.translate(CSS_W, 0);
   dctx.scale(-1, 1);
-  dctx.drawImage(buf, display.width - st.x - W*SCALE, Y, W*SCALE, H*SCALE);
+  dctx.imageSmoothingEnabled = false; // re-enforce after scale
+  dctx.drawImage(buf, CSS_W - st.x - W*SCALE, CHAR_DRAW_Y, W*SCALE, H*SCALE);
   dctx.restore();
 }
 // ALL offsets must mirror: particles, shadow, effects
@@ -385,11 +415,17 @@ function spawnParticle(x, y, type) {
 
 ## 4. Common Pitfalls
 
-| Mistake | Fix |
-|---------|-----|
-| No `imageSmoothingEnabled = false` | Set on display context before drawImage |
-| Bob applied to feet | Fixed feetY, only bob the body |
-| Shadow/particles don't flip | Mirror X: `st.x + W*SCALE - offset` |
-| Pillow shading | Pick ONE light direction |
-| Pure value shading | Hue shift: shadows→cool, highlights→warm |
-| Trying to hand-code production sprites | Use PixelLab/SpriteCook for quality art, code for rendering |
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| No `imageSmoothingEnabled = false` | Blurry pixels when scaled | Set before every `drawImage`, re-set after `save/restore` |
+| No HiDPI/DPR fix | Blurry on Retina/4K screens | `canvas.width = CSS_W * DPR` + `ctx.scale(DPR, DPR)` |
+| Using `display.width` after DPR fix | Wrong coordinates (2x too large) | Use `CSS_W`/`CSS_H` for all coordinate math |
+| Bob applied to feet | Character floats off ground | Fixed feetY, only bob the body/head |
+| Wrong `CHAR_DRAW_Y` calculation | Character floats above ground | Trace exact boot bottom row in buffer, anchor to `GROUND_Y` |
+| Shadow/particles don't flip | Effects on wrong side facing left | Mirror X: `st.x + W*SCALE - offset` |
+| Eyes asymmetric | Eyes look cross-eyed/diverging | Ensure shine/iris px() positions are same relative column in each eye |
+| Pillow shading | Character looks inflated/flat | Pick ONE light direction, commit to it |
+| Pure black outlines | Chunky, unprofessional look | Use **selout**: colored outlines per material region |
+| Pure value shading | Muddy, lifeless colors | Hue shift: shadows→cool, highlights→warm |
+| No AA on curves | Jagged dome/circle edges | Add 1px intermediate color on staircase steps >1px |
+| `O` undefined in draw function | ReferenceError crash | Each draw function must define `const O = P.XX` locally, or use `P.XX` directly |
