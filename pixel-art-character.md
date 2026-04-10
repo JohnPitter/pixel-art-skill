@@ -202,7 +202,64 @@ const P = {
 };
 ```
 
-**Rule**: 5-8 tones per material, never pure value darkening.
+**Rule**: 8-12 tones per material, never pure value darkening.
+
+### Advanced Technique: Selective Outlining (Selout)
+
+Replace pure black outlines with **colored outlines** that match nearby hues. This is the single biggest quality improvement for pixel art sprites.
+
+```javascript
+const P = {
+  // SELOUT OUTLINES — one per material region
+  OC: '#3a1014',  // cap outline (dark red, not black)
+  OB: '#2a1810',  // brim outline (dark brown)
+  OF: '#2a1810',  // face outline (warm dark)
+  OG: '#0c1c0c',  // cloak outline (dark green)
+  OW: '#1a1008',  // staff/feet outline (dark wood)
+  OL: '#10080a',  // high-contrast areas only (near-black)
+};
+```
+
+**Rules:**
+- Light-facing edges → lighter outline (1 shade darker than fill)
+- Shadow-facing edges → darker outline
+- Internal lines → selout color matching the darker fill nearby
+- Only keep near-black outline where maximum contrast is needed
+
+### Advanced Technique: Anti-Aliasing (AA)
+
+Add intermediate color pixels on curved edges (>1px staircase patterns). Do NOT AA straight lines or 45-degree diagonals.
+
+```javascript
+// AA row above cap dome — soften edge against background
+hL(ox+10, oy-1, [AA_dark, AA_dark, AA_dark, AA_dark]);
+
+// Cap dome with AA at edges
+hL(ox+9, oy, [AA_dark, OUTLINE, OUTLINE, ..., OUTLINE, AA_dark]);
+```
+
+**Rules:**
+- AA halftone = value halfway between outline and background
+- Only on staircase steps >1px long
+- Horizontal slopes get horizontal AA, vertical slopes get vertical AA
+- Less is more — too much AA = blurry
+
+### Advanced Technique: Dithering
+
+Checkerboard pattern between two adjacent tones to create texture and smooth gradients:
+
+```javascript
+// Dithered fill for texture
+function dither(x, y, w, h, c1, c2) {
+  for (let dy = 0; dy < h; dy++)
+    for (let dx = 0; dx < w; dx++) {
+      bc.fillStyle = (dx+dy) % 2 === 0 ? c1 : c2;
+      bc.fillRect(x+dx, y+dy, 1, 1);
+    }
+}
+```
+
+**Use for:** metal armor transitions, fabric folds, wood grain, stone surfaces. Avoid on skin and smooth surfaces.
 
 ### Drawing Helpers
 
